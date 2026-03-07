@@ -4,3 +4,4 @@ numpy
 plotly
 groq
 fpdf
+statsmodels==1.2.0
