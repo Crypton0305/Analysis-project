@@ -25,23 +25,41 @@ st.set_page_config(
 # ==============================
 # THEME VARIABLES
 # ==============================
-is_dark = True  # dark only
+COLOR_THEMES = {
+    "Purple (Default)": {"a1": "#a78bfa", "a2": "#60a5fa", "a3": "#34d399"},
+    "Ocean Blue":        {"a1": "#38bdf8", "a2": "#818cf8", "a3": "#34d399"},
+    "Emerald":           {"a1": "#34d399", "a2": "#60a5fa", "a3": "#fbbf24"},
+    "Rose":              {"a1": "#f87171", "a2": "#fb923c", "a3": "#34d399"},
+    "Amber":             {"a1": "#fbbf24", "a2": "#f97316", "a3": "#34d399"},
+    "Pink":              {"a1": "#e879f9", "a2": "#a78bfa", "a3": "#34d399"},
+}
+CURRENCIES = {"PKR (Rs)":"Rs","USD ($)":"$","EUR (€)":"€","GBP (£)":"£","AED (د.إ)":"د.إ","SAR (﷼)":"﷼"}
+
+if "color_theme" not in st.session_state:
+    st.session_state["color_theme"] = "Purple (Default)"
+if "currency" not in st.session_state:
+    st.session_state["currency"] = "PKR (Rs)"
+
+_t = COLOR_THEMES[st.session_state["color_theme"]]
+CURR_SYMBOL = CURRENCIES.get(st.session_state["currency"], "Rs")
+
+is_dark     = True
 BG          = "#0d0d14"
 BG2         = "#13131f"
 BG3         = "#1a1a2e"
 BORDER      = "#2a2a45"
 TEXT        = "#f0f0f8"
 TEXT2       = "#8888aa"
-ACCENT1     = "#a78bfa"
-ACCENT2     = "#60a5fa"
-ACCENT3     = "#34d399"
+ACCENT1     = _t["a1"]
+ACCENT2     = _t["a2"]
+ACCENT3     = _t["a3"]
 SIDEBAR_BG  = "#0f0f1a"
 PLOT_PAPER  = "#0d0d14"
 PLOT_BG     = "#13131f"
 PLOT_GRID   = "#1e1e35"
 FILL_COLOR  = "rgba(167,139,250,0.08)"
 SHADOW      = "0 4px 24px rgba(0,0,0,0.5)"
-CHART_COLORS = ["#a78bfa","#60a5fa","#34d399","#fbbf24","#f87171","#e879f9","#22d3ee","#fb923c"]
+CHART_COLORS = [_t["a1"], _t["a2"], _t["a3"], "#fbbf24","#f87171","#e879f9","#22d3ee","#fb923c"]
 
 # ==============================
 # CSS
@@ -62,14 +80,13 @@ html, body, [class*="css"] {{
 section[data-testid="stSidebar"] {{
     background: {SIDEBAR_BG} !important;
     border-right: 1px solid {BORDER} !important;
-    box-shadow: {'none' if is_dark else '4px 0 24px rgba(99,102,241,0.1)'} !important;
+    box-shadow: none !important;
 }}
 section[data-testid="stSidebar"] > div {{
     padding-top: 0 !important;
 }}
 section[data-testid="stSidebar"] * {{ color: {TEXT} !important; }}
 
-/* SIDEBAR SECTION LABELS */
 .sidebar-label {{
     font-size: 0.72rem;
     font-weight: 700;
@@ -82,21 +99,14 @@ section[data-testid="stSidebar"] * {{ color: {TEXT} !important; }}
     align-items: center;
     gap: 5px;
 }}
-.sidebar-divider {{
-    height: 1px;
-    background: {'linear-gradient(90deg,'+BORDER+',transparent)' if is_dark else 'linear-gradient(90deg,'+BORDER+',transparent)'};
-    margin: 6px 0 14px 0;
-    border: none;
-}}
 
-/* HERO */
 .hero-wrap {{
-    background: {'linear-gradient(135deg,#13131f,#1a1a2e)' if is_dark else 'linear-gradient(135deg,#ffffff 0%,#eef0ff 60%,#e8ecff 100%)'};
+    background: linear-gradient(135deg,#13131f,#1a1a2e);
     border: 1px solid {BORDER};
     border-radius: 20px;
     padding: 30px 36px;
     margin-bottom: 24px;
-    box-shadow: {'0 4px 24px rgba(0,0,0,0.5)' if is_dark else '0 4px 24px rgba(99,102,241,0.14), 0 0 0 1px rgba(99,102,241,0.08)'};
+    box-shadow: {SHADOW};
     position: relative;
     overflow: hidden;
 }}
@@ -104,7 +114,7 @@ section[data-testid="stSidebar"] * {{ color: {TEXT} !important; }}
     content:'';
     position:absolute; top:-80px; right:-80px;
     width:240px; height:240px;
-    background: radial-gradient(circle, {'rgba(167,139,250,0.12)' if is_dark else 'rgba(99,102,241,0.1)'}, transparent 70%);
+    background: radial-gradient(circle, rgba(167,139,250,0.12), transparent 70%);
     border-radius:50%;
 }}
 .hero-title {{
@@ -119,11 +129,9 @@ section[data-testid="stSidebar"] * {{ color: {TEXT} !important; }}
 }}
 .hero-sub {{ color: {TEXT2}; font-size: 0.95rem; margin: 0; }}
 
-/* METRIC CARDS */
 .metric-card {{
-    background: {'linear-gradient(135deg,#13131f,#1a1a2e)' if is_dark else 'linear-gradient(135deg,#ffffff,#f4f6ff)'};
+    background: linear-gradient(135deg,#13131f,#1a1a2e);
     border: 1px solid {BORDER};
-    {'border-left: 3px solid' + ACCENT1 + ';' if not is_dark else ''};
     border-radius: 16px;
     padding: 22px;
     margin: 6px 0;
@@ -134,7 +142,7 @@ section[data-testid="stSidebar"] * {{ color: {TEXT} !important; }}
 }}
 .metric-card:hover {{
     transform: translateY(-4px);
-    box-shadow: {'0 12px 32px rgba(167,139,250,0.25)' if is_dark else '0 8px 32px rgba(99,102,241,0.22), 0 0 0 1px rgba(99,102,241,0.3)'};
+    box-shadow: 0 12px 32px rgba(167,139,250,0.25);
     border-color: {ACCENT1};
 }}
 .metric-value {{
@@ -156,7 +164,6 @@ section[data-testid="stSidebar"] * {{ color: {TEXT} !important; }}
     font-weight: 600;
 }}
 
-/* SECTION TITLE */
 .section-title {{
     font-family: 'Syne', sans-serif;
     font-size: 1.1rem;
@@ -170,10 +177,9 @@ section[data-testid="stSidebar"] * {{ color: {TEXT} !important; }}
     gap: 8px;
 }}
 
-/* AI RESPONSE */
 .ai-response {{
-    background: {'linear-gradient(135deg,#0d1b2e,#0f2040)' if is_dark else 'linear-gradient(135deg,#eff6ff,#dbeafe)'};
-    border: 1px solid {'#1e4a7a' if is_dark else '#93c5fd'};
+    background: linear-gradient(135deg,#0d1b2e,#0f2040);
+    border: 1px solid #1e4a7a;
     border-left: 4px solid {ACCENT2};
     border-radius: 14px;
     padding: 22px 26px;
@@ -184,21 +190,19 @@ section[data-testid="stSidebar"] * {{ color: {TEXT} !important; }}
     box-shadow: {SHADOW};
 }}
 
-/* UPLOAD HINT */
 .upload-hint {{
     text-align: center;
     padding: 60px 40px;
     border: 2px dashed {BORDER};
     border-radius: 20px;
     margin: 20px 0;
-    background: {'#13131f' if is_dark else '#ffffff'};
+    background: #13131f;
     transition: border-color 0.2s;
 }}
 .upload-hint:hover {{ border-color: {ACCENT1}; }}
 
-/* STEPS */
 .step-card {{
-    background: {'linear-gradient(135deg,#13131f,#1a1a2e)' if is_dark else 'linear-gradient(135deg,#ffffff,#f4f6ff)'};
+    background: linear-gradient(135deg,#13131f,#1a1a2e);
     border: 1px solid {BORDER};
     border-radius: 14px;
     padding: 20px;
@@ -209,7 +213,7 @@ section[data-testid="stSidebar"] * {{ color: {TEXT} !important; }}
 }}
 .step-card:hover {{
     transform: translateY(-3px);
-    box-shadow: {'0 10px 28px rgba(167,139,250,0.2)' if is_dark else '0 8px 28px rgba(99,102,241,0.18), 0 0 0 1px rgba(99,102,241,0.2)'};
+    box-shadow: 0 10px 28px rgba(167,139,250,0.2);
 }}
 .step-num {{
     display: inline-flex;
@@ -224,18 +228,6 @@ section[data-testid="stSidebar"] * {{ color: {TEXT} !important; }}
     margin-bottom: 10px;
 }}
 
-/* SIDEBAR BADGE */
-.model-badge {{
-    background: {BG3};
-    border: 1px solid {BORDER};
-    border-radius: 10px;
-    padding: 10px 14px;
-    font-size: 0.82rem;
-    margin-top: 8px;
-    color: {TEXT};
-}}
-
-/* BUTTONS */
 .stButton > button {{
     background: linear-gradient(135deg, {ACCENT1}, {ACCENT2}) !important;
     color: white !important;
@@ -246,14 +238,13 @@ section[data-testid="stSidebar"] * {{ color: {TEXT} !important; }}
     font-weight: 600 !important;
     font-size: 0.9rem !important;
     transition: all 0.2s ease !important;
-    box-shadow: 0 4px 14px {'rgba(167,139,250,0.3)' if is_dark else 'rgba(99,102,241,0.3)'} !important;
+    box-shadow: 0 4px 14px rgba(167,139,250,0.3) !important;
 }}
 .stButton > button:hover {{
     transform: translateY(-2px) !important;
-    box-shadow: 0 8px 20px {'rgba(167,139,250,0.5)' if is_dark else 'rgba(99,102,241,0.45)'} !important;
+    box-shadow: 0 8px 20px rgba(167,139,250,0.5) !important;
 }}
 
-/* TABS */
 .stTabs [data-baseweb="tab-list"] {{
     background: {BG3};
     border-radius: 16px;
@@ -276,15 +267,14 @@ section[data-testid="stSidebar"] * {{ color: {TEXT} !important; }}
 }}
 .stTabs [data-baseweb="tab"]:hover {{
     color: {ACCENT1} !important;
-    background: {'rgba(167,139,250,0.08)' if is_dark else 'rgba(99,102,241,0.06)'} !important;
+    background: rgba(167,139,250,0.08) !important;
 }}
 .stTabs [aria-selected="true"] {{
     background: linear-gradient(135deg, {ACCENT1}, {ACCENT2}) !important;
     color: white !important;
-    box-shadow: 0 4px 14px {'rgba(167,139,250,0.4)' if is_dark else 'rgba(99,102,241,0.3)'} !important;
+    box-shadow: 0 4px 14px rgba(167,139,250,0.4) !important;
 }}
 
-/* INPUTS */
 .stTextInput > div > div,
 .stSelectbox > div > div,
 .stTextArea > div > div {{
@@ -294,15 +284,29 @@ section[data-testid="stSidebar"] * {{ color: {TEXT} !important; }}
     border-radius: 9px !important;
 }}
 
-/* DATAFRAME */
 .stDataFrame {{ border-radius: 12px !important; overflow: hidden !important; }}
 
-/* SCROLLBAR */
 ::-webkit-scrollbar {{ width: 5px; }}
 ::-webkit-scrollbar-track {{ background: {BG}; }}
 ::-webkit-scrollbar-thumb {{ background: {BORDER}; border-radius: 3px; }}
 
 .js-plotly-plot {{ border-radius: 14px; overflow: hidden; }}
+
+/* ===== MOBILE RESPONSIVE ===== */
+@media (max-width: 768px) {{
+    .hero-title {{ font-size: 1.4rem !important; }}
+    .hero-wrap {{ padding: 18px 16px !important; }}
+    .metric-value {{ font-size: 1.4rem !important; }}
+    .metric-card {{ padding: 14px !important; }}
+    .section-title {{ font-size: 0.95rem !important; }}
+    .stTabs [data-baseweb="tab"] {{
+        padding: 8px 10px !important;
+        min-width: 70px !important;
+        font-size: 0.75rem !important;
+    }}
+    .ai-response {{ padding: 14px 16px !important; }}
+    .block-container {{ padding-left: 0.5rem !important; padding-right: 0.5rem !important; }}
+}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -319,9 +323,7 @@ PLOT_TPL = dict(
     margin=dict(t=44, b=36, l=36, r=16),
     title_font=dict(color=TEXT, size=14),
     title_x=0.02,
-    legend=dict(bgcolor="rgba(0,0,0,0)" if is_dark else "rgba(255,255,255,0.9)", 
-                font=dict(color=TEXT2),
-                bordercolor=BORDER, borderwidth=1),
+    legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color=TEXT2), bordercolor=BORDER, borderwidth=1),
 )
 
 # ==============================
@@ -403,13 +405,10 @@ def build_ai_prompt(analysis_type, summary, extra=""):
 # ==============================
 with st.sidebar:
 
-    # ---- LOGO HEADER ----
     st.markdown(f"""
     <div style='padding:20px 4px 16px 4px;border-bottom:2px solid {BORDER};margin-bottom:4px;'>
         <div style='font-family:Syne,sans-serif;font-size:1.55rem;font-weight:800;
-        background:linear-gradient(135deg,{ACCENT1},{ACCENT2});
-        -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-        line-height:1.1;'>
+        color:{ACCENT1};line-height:1.1;'>
             💸 SpendSense AI
         </div>
         <div style='color:{TEXT2};font-size:0.78rem;margin-top:5px;letter-spacing:0.3px;'>
@@ -420,12 +419,10 @@ with st.sidebar:
 
     st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
 
-    # ---- API KEY ----
     st.markdown(f"<div class='sidebar-label'>🔑 Groq API Key</div>", unsafe_allow_html=True)
     api_key = st.text_input("Groq API Key", type="password", placeholder="gsk_...", label_visibility="collapsed")
     st.markdown(f"<div style='font-size:0.73rem;color:{TEXT2};margin-top:3px;'>Get free key → <a href='https://console.groq.com' target='_blank' style='color:{ACCENT2};font-weight:600;'>console.groq.com</a></div>", unsafe_allow_html=True)
 
-    # ---- MODEL SELECTOR ----
     st.markdown(f"<div class='sidebar-label'>🤖 AI Model</div>", unsafe_allow_html=True)
     groq_model = st.selectbox("model", label_visibility="collapsed",
         options=["llama-3.1-8b-instant","llama-3.3-70b-versatile","llama3-8b-8192","gemma2-9b-it","mixtral-8x7b-32768"],
@@ -439,7 +436,7 @@ with st.sidebar:
     }
     ic, spd, lim = model_meta.get(groq_model, ("🤖","","N/A"))
     st.markdown(f"""
-    <div style='background:{"#13131f" if is_dark else "#f8f9ff"};border:1px solid {BORDER};
+    <div style='background:#13131f;border:1px solid {BORDER};
     border-radius:10px;padding:10px 13px;margin-top:4px;'>
         <div style='font-weight:700;color:{ACCENT1};font-size:0.82rem;'>{ic} {groq_model}</div>
         <div style='color:{TEXT2};font-size:0.74rem;margin-top:2px;'>{spd} · {lim}</div>
@@ -447,19 +444,42 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     st.session_state["groq_model"] = groq_model
 
-    # ---- LANGUAGE ----
     st.markdown(f"<div class='sidebar-label'>🌐 AI Language</div>", unsafe_allow_html=True)
     ai_lang = st.selectbox("lang", label_visibility="collapsed",
         options=["English", "Urdu (اردو)", "Hindi (हिंदी)"], index=0)
     st.session_state["ai_lang"] = ai_lang
+
+    # ---- COLOR THEME ----
+    st.markdown(f"<div class='sidebar-label'>🎨 Color Theme</div>", unsafe_allow_html=True)
+    theme_keys = list(COLOR_THEMES.keys())
+    chosen_theme = st.selectbox("theme", label_visibility="collapsed", options=theme_keys,
+        index=theme_keys.index(st.session_state["color_theme"]))
+    if chosen_theme != st.session_state["color_theme"]:
+        st.session_state["color_theme"] = chosen_theme
+        st.rerun()
+    _prev = COLOR_THEMES[chosen_theme]
+    st.markdown(
+        f"<div style='display:flex;gap:6px;margin:4px 0 10px 0;'>"
+        f"<div style='width:16px;height:16px;border-radius:50%;background:{_prev['a1']};'></div>"
+        f"<div style='width:16px;height:16px;border-radius:50%;background:{_prev['a2']};'></div>"
+        f"<div style='width:16px;height:16px;border-radius:50%;background:{_prev['a3']};'></div>"
+        f"</div>", unsafe_allow_html=True)
+
+    # ---- CURRENCY ----
+    st.markdown(f"<div class='sidebar-label'>🔢 Currency</div>", unsafe_allow_html=True)
+    curr_keys = list(CURRENCIES.keys())
+    chosen_curr = st.selectbox("currency", label_visibility="collapsed", options=curr_keys,
+        index=curr_keys.index(st.session_state["currency"]))
+    if chosen_curr != st.session_state["currency"]:
+        st.session_state["currency"] = chosen_curr
+        st.rerun()
 
     # ---- UPLOAD ----
     st.markdown(f"<div class='sidebar-label'>📁 Upload CSV</div>", unsafe_allow_html=True)
     uploaded_file = st.file_uploader("CSV", type=["csv"], label_visibility="collapsed")
 
     st.markdown(f"""
-    <div style='margin-top:14px;padding:11px 13px;
-    background:{"#13131f" if is_dark else "#ffffff"};
+    <div style='margin-top:14px;padding:11px 13px;background:#13131f;
     border-radius:10px;border:1px solid {BORDER};font-size:0.76rem;color:{TEXT2};line-height:1.75;'>
         <b style='color:{ACCENT1};'>Supported columns:</b><br>
         • Date (auto-detected)<br>
@@ -472,7 +492,6 @@ with st.sidebar:
 # MAIN CONTENT
 # ==============================
 
-# ---- NO DATA: LANDING PAGE ----
 if uploaded_file is None and "df" not in st.session_state:
 
     st.markdown(f"""
@@ -567,7 +586,6 @@ else:
     </div>
     """, unsafe_allow_html=True)
 
-    # ---- METRIC CARDS ROW 1 ----
     st.markdown(f"<div class='section-title'>📈 Dataset Overview</div>", unsafe_allow_html=True)
     m1, m2, m3, m4 = st.columns(4)
     for col_w, (icon, val, lbl, sub) in zip([m1,m2,m3,m4], [
@@ -586,7 +604,6 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-    # ---- METRIC CARDS ROW 2 (numeric stats) ----
     if numeric_cols:
         st.markdown("<br>", unsafe_allow_html=True)
         stat_cols = st.columns(min(4, len(numeric_cols)))
@@ -613,7 +630,10 @@ else:
     # TABS
     # ==============================
     st.markdown("<br>", unsafe_allow_html=True)
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["📊 Analytics", "🗃️ Raw Data", "🔬 Deep Dive", "🤖 AI Insights", "🎯 Savings Goal", "📈 Forecast & PDF", "💬 Chat"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "📊 Analytics", "🗃️ Raw Data", "🔬 Deep Dive",
+        "🤖 AI Insights", "🎯 Savings Goal", "📈 Forecast & PDF", "💬 Chat"
+    ])
 
     # ---- TAB 1: ANALYTICS ----
     with tab1:
@@ -629,6 +649,7 @@ else:
                         fig.update_layout(**PLOT_TPL)
                         fig.update_traces(marker_line_width=0.4, marker_line_color=PLOT_BG)
                         st.plotly_chart(fig, use_container_width=True)
+
         if "Month_Name" in df.columns and numeric_cols:
             st.markdown(f"<div class='section-title'>📅 Monthly Trend</div>", unsafe_allow_html=True)
             selected_metric = st.selectbox("Select metric:", numeric_cols, key="ts_metric")
@@ -636,16 +657,13 @@ else:
                          7:"Jul",8:"Aug",9:"Sep",10:"Oct",11:"Nov",12:"Dec"}
             monthly = df.groupby("Month")[selected_metric].sum().reset_index().sort_values("Month")
             monthly["Month_Name"] = monthly["Month"].map(month_map)
-
             fig_line = go.Figure()
             fig_line.add_trace(go.Scatter(
                 x=monthly["Month_Name"], y=monthly[selected_metric],
                 mode="lines+markers",
                 line=dict(color=ACCENT1, width=3, shape="spline"),
                 marker=dict(size=9, color=ACCENT2, line=dict(color=ACCENT1, width=2)),
-                fill="tozeroy",
-                fillcolor=FILL_COLOR,
-                name=selected_metric
+                fill="tozeroy", fillcolor=FILL_COLOR, name=selected_metric
             ))
             fig_line.update_layout(title=f"Monthly {selected_metric} Trend", **PLOT_TPL)
             st.plotly_chart(fig_line, use_container_width=True)
@@ -656,7 +674,6 @@ else:
             selected_cat = st.selectbox("Select category column:", cat_cols, key="cat_col")
             cat_counts = df[selected_cat].value_counts().reset_index()
             cat_counts.columns = [selected_cat, "Count"]
-
             with c1:
                 fig_bar = px.bar(cat_counts.head(10), x=selected_cat, y="Count",
                     title=f"Top {selected_cat} Categories", color="Count",
@@ -700,10 +717,8 @@ else:
             st.dataframe(df[mask], use_container_width=True, height=400)
         else:
             st.dataframe(df, use_container_width=True, height=400)
-
         st.markdown(f"<div class='section-title'>📊 Statistical Summary</div>", unsafe_allow_html=True)
         st.dataframe(df[numeric_cols].describe().round(2), use_container_width=True)
-
         csv_buf = io.StringIO()
         df.to_csv(csv_buf, index=False)
         st.download_button("⬇️ Download Cleaned Data", csv_buf.getvalue().encode(),
@@ -742,8 +757,7 @@ else:
             <div style='font-family:Syne,sans-serif;font-size:1.1rem;font-weight:700;
             color:{ACCENT1};margin-bottom:8px;'>🤖 Groq AI Financial Advisor</div>
             <span style='color:{TEXT2};font-size:0.88rem;'>
-            Enter your Groq API key in the sidebar → select analysis type → click Generate.<br>
-            AI will analyze your actual data and give personalized financial advice.
+            Enter your Groq API key in the sidebar → select analysis type → click Generate.
             </span>
         </div>
         """, unsafe_allow_html=True)
@@ -762,7 +776,7 @@ else:
         extra_context = ""
         if analysis_key == "custom":
             extra_context = st.text_area("Your question:", height=100,
-                placeholder="e.g. Which category is draining my budget? How to save Rs 10,000/month?")
+                placeholder="e.g. Which category is draining my budget?")
         elif analysis_key == "monthly":
             if "Month" in df.columns and numeric_cols:
                 extra_context = df.groupby("Month")[numeric_cols].sum().to_string()
@@ -783,9 +797,7 @@ else:
             st.markdown(f"<div class='section-title'>💡 AI Analysis</div>", unsafe_allow_html=True)
             st.markdown(f"""
             <div class='ai-response'>
-                <div style='font-weight:700;color:{ACCENT1};margin-bottom:10px;'>
-                    {selected_analysis}
-                </div>
+                <div style='font-weight:700;color:{ACCENT1};margin-bottom:10px;'>{selected_analysis}</div>
                 {st.session_state[f'ai_result_{analysis_key}'].replace(chr(10), '<br>')}
             </div>
             """, unsafe_allow_html=True)
@@ -796,8 +808,6 @@ else:
 
         st.markdown("---")
         st.markdown(f"<div class='section-title'>⚡ Quick Insights</div>", unsafe_allow_html=True)
-        st.markdown(f"<div style='color:{TEXT2};font-size:0.84rem;margin-bottom:12px;'>One-click AI analysis:</div>", unsafe_allow_html=True)
-
         qc1, qc2, qc3 = st.columns(3)
         quick_map = {
             "💸 Spending Alert": "warnings",
@@ -832,15 +842,14 @@ else:
     # ---- TAB 5: SAVINGS GOAL ----
     with tab5:
         st.markdown(f"<div class='section-title'>🎯 Savings Goal Tracker</div>", unsafe_allow_html=True)
-
         sc1, sc2 = st.columns(2)
         with sc1:
             goal_name   = st.text_input("Goal Name", placeholder="e.g. New Laptop, Trip to Dubai")
-            goal_amount = st.number_input("Target Amount (Rs)", min_value=1000, value=50000, step=1000)
+            goal_amount = st.number_input(f"Target Amount ({CURR_SYMBOL})", min_value=1000, value=50000, step=1000)
         with sc2:
             if numeric_cols:
                 savings_col  = st.selectbox("Savings Column:", numeric_cols, key="goal_col")
-                saved_so_far = st.number_input("Already Saved (Rs)", min_value=0, value=0, step=500)
+                saved_so_far = st.number_input(f"Already Saved ({CURR_SYMBOL})", min_value=0, value=0, step=500)
 
         if st.button("📊 Calculate Progress", use_container_width=True):
             total_saved = df[savings_col].sum() + saved_so_far if numeric_cols else saved_so_far
@@ -849,7 +858,6 @@ else:
             monthly_avg = df[savings_col].mean() if numeric_cols else 0
             months_left = int(remaining / monthly_avg) if monthly_avg > 0 else 999
             bar_color   = ACCENT3 if pct >= 75 else ACCENT2 if pct >= 40 else ACCENT1
-
             st.markdown(f"""
             <div class='metric-card' style='margin-top:16px;'>
                 <div style='font-family:Syne,sans-serif;font-size:1.1rem;font-weight:700;color:{TEXT};margin-bottom:16px;'>
@@ -864,11 +872,11 @@ else:
                 </div>
                 <div style='display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;'>
                     <div style='text-align:center;background:{BG3};border-radius:10px;padding:12px;'>
-                        <div style='font-size:1.2rem;font-weight:800;color:{ACCENT2};'>Rs {total_saved:,.0f}</div>
+                        <div style='font-size:1.2rem;font-weight:800;color:{ACCENT2};'>{CURR_SYMBOL} {total_saved:,.0f}</div>
                         <div style='font-size:0.72rem;color:{TEXT2};margin-top:2px;'>SAVED</div>
                     </div>
                     <div style='text-align:center;background:{BG3};border-radius:10px;padding:12px;'>
-                        <div style='font-size:1.2rem;font-weight:800;color:{ACCENT1};'>Rs {remaining:,.0f}</div>
+                        <div style='font-size:1.2rem;font-weight:800;color:{ACCENT1};'>{CURR_SYMBOL} {remaining:,.0f}</div>
                         <div style='font-size:0.72rem;color:{TEXT2};margin-top:2px;'>REMAINING</div>
                     </div>
                     <div style='text-align:center;background:{BG3};border-radius:10px;padding:12px;'>
@@ -878,22 +886,15 @@ else:
                 </div>
             </div>
             """, unsafe_allow_html=True)
-
             if pct >= 100:
                 st.success("🎉 Goal Achieved! Mubarak ho!")
             elif pct >= 75:
-                st.info(f"🔥 Almost there! Sirf Rs {remaining:,.0f} aur chahiye!")
+                st.info(f"🔥 Almost there! Sirf {CURR_SYMBOL} {remaining:,.0f} aur chahiye!")
             elif monthly_avg > 0:
                 st.info(f"📅 Current rate pe approx {months_left} months mein goal achieve hoga.")
 
-        # Preset goals overview
         st.markdown(f"<div class='section-title'>📋 Quick Goals Overview</div>", unsafe_allow_html=True)
-        preset_goals = {
-            "Emergency Fund": 150000,
-            "New Phone":       80000,
-            "Vacation":       100000,
-            "New Laptop":     120000,
-        }
+        preset_goals = {"Emergency Fund":150000,"New Phone":80000,"Vacation":100000,"New Laptop":120000}
         if numeric_cols:
             total_saved_all = df[savings_col].sum()
             gcols = st.columns(2)
@@ -909,7 +910,7 @@ else:
                         </div>
                         <div style='display:flex;justify-content:space-between;font-size:0.78rem;'>
                             <span style='color:{gcolor};font-weight:600;'>{gpct:.0f}%</span>
-                            <span style='color:{TEXT2};'>Target: Rs {gtarget:,}</span>
+                            <span style='color:{TEXT2};'>Target: {CURR_SYMBOL} {gtarget:,}</span>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -917,56 +918,41 @@ else:
     # ---- TAB 6: FORECAST + PDF ----
     with tab6:
         st.markdown(f"<div class='section-title'>📈 Spending Forecast</div>", unsafe_allow_html=True)
-
         if numeric_cols and "Month" in df.columns:
             fc1, fc2 = st.columns(2)
-            with fc1:
-                forecast_col = st.selectbox("Column to forecast:", numeric_cols, key="fc_col")
-            with fc2:
-                forecast_months = st.slider("Months ahead:", 1, 6, 3)
-
+            with fc1: forecast_col = st.selectbox("Column to forecast:", numeric_cols, key="fc_col")
+            with fc2: forecast_months = st.slider("Months ahead:", 1, 6, 3)
             monthly_data = df.groupby("Month")[forecast_col].sum().reset_index().sort_values("Month")
             month_map2   = {1:"Jan",2:"Feb",3:"Mar",4:"Apr",5:"May",6:"Jun",
                             7:"Jul",8:"Aug",9:"Sep",10:"Oct",11:"Nov",12:"Dec"}
             monthly_data["Month_Name"] = monthly_data["Month"].map(month_map2)
-
             if len(monthly_data) >= 2:
                 x      = np.arange(len(monthly_data))
                 y      = monthly_data[forecast_col].values
                 coeffs = np.polyfit(x, y, 1)
                 trend  = np.poly1d(coeffs)
-
-                future_x     = np.arange(len(monthly_data), len(monthly_data) + forecast_months)
-                future_y     = trend(future_x)
-                last_month   = monthly_data["Month"].iloc[-1]
-                future_months= [(last_month + i) % 12 + 1 for i in range(1, forecast_months + 1)]
-                future_names = [month_map2[m] for m in future_months]
-
+                future_x      = np.arange(len(monthly_data), len(monthly_data) + forecast_months)
+                future_y      = trend(future_x)
+                last_month    = monthly_data["Month"].iloc[-1]
+                future_months = [(last_month + i) % 12 + 1 for i in range(1, forecast_months + 1)]
+                future_names  = [month_map2[m] for m in future_months]
                 fig_fc = go.Figure()
-                fig_fc.add_trace(go.Scatter(
-                    x=monthly_data["Month_Name"], y=monthly_data[forecast_col],
-                    mode="lines+markers", name="Actual",
-                    line=dict(color=ACCENT2, width=3),
-                    marker=dict(size=8, color=ACCENT2),
-                ))
-                fig_fc.add_trace(go.Scatter(
-                    x=future_names, y=future_y,
-                    mode="lines+markers", name="Forecast",
-                    line=dict(color=ACCENT1, width=3, dash="dot"),
-                    marker=dict(size=8, color=ACCENT1, symbol="diamond"),
-                ))
+                fig_fc.add_trace(go.Scatter(x=monthly_data["Month_Name"], y=monthly_data[forecast_col],
+                    mode="lines+markers", name="Actual", line=dict(color=ACCENT2, width=3),
+                    marker=dict(size=8, color=ACCENT2)))
+                fig_fc.add_trace(go.Scatter(x=future_names, y=future_y,
+                    mode="lines+markers", name="Forecast", line=dict(color=ACCENT1, width=3, dash="dot"),
+                    marker=dict(size=8, color=ACCENT1, symbol="diamond")))
                 fig_fc.update_layout(title=f"{forecast_col} — {forecast_months} Month Forecast", **PLOT_TPL)
                 st.plotly_chart(fig_fc, use_container_width=True)
-
                 avg_actual   = y.mean()
                 avg_forecast = future_y.mean()
                 trend_dir    = "📈 Increasing" if coeffs[0] > 0 else "📉 Decreasing"
                 change_pct   = ((avg_forecast - avg_actual) / avg_actual * 100) if avg_actual else 0
-
                 fs1, fs2, fs3 = st.columns(3)
                 for cw, (icon, val, lbl, clr) in zip([fs1,fs2,fs3], [
-                    ("📊", f"Rs {avg_actual:,.0f}",   "Avg Monthly (Actual)",   ACCENT2),
-                    ("🔮", f"Rs {avg_forecast:,.0f}", "Avg Monthly (Forecast)", ACCENT1),
+                    ("📊", f"{CURR_SYMBOL} {avg_actual:,.0f}",   "Avg Monthly (Actual)",   ACCENT2),
+                    ("🔮", f"{CURR_SYMBOL} {avg_forecast:,.0f}", "Avg Monthly (Forecast)", ACCENT1),
                     ("📉", f"{change_pct:+.1f}%",     "Expected Change",        ACCENT3 if change_pct < 0 else "#f87171"),
                 ]):
                     with cw:
@@ -977,34 +963,25 @@ else:
                             <div class='metric-label'>{lbl}</div>
                         </div>
                         """, unsafe_allow_html=True)
-
                 st.markdown(f"""
                 <div class='ai-response' style='margin-top:16px;'>
                     <div style='font-weight:700;color:{ACCENT1};margin-bottom:8px;'>📊 Trend Summary</div>
                     <b>Direction:</b> {trend_dir} &nbsp;·&nbsp;
-                    <b>Monthly Change:</b> Rs {abs(coeffs[0]):,.0f}/month &nbsp;·&nbsp;
-                    <b>Next Month Est.:</b> Rs {trend(len(monthly_data)):,.0f}<br><br>
-                    <span style='color:{TEXT2};font-size:0.83rem;'>
-                    * Linear trend based on historical data. Actual results may vary.
-                    </span>
+                    <b>Monthly Change:</b> {CURR_SYMBOL} {abs(coeffs[0]):,.0f}/month &nbsp;·&nbsp;
+                    <b>Next Month Est.:</b> {CURR_SYMBOL} {trend(len(monthly_data)):,.0f}
                 </div>
                 """, unsafe_allow_html=True)
-
                 if api_key:
                     if st.button("🤖 AI Forecast Analysis", use_container_width=True):
                         with st.spinner("Generating insights..."):
                             try:
-                                fc_prompt = (
-                                    f"Monthly {forecast_col} data: {dict(zip(monthly_data['Month_Name'], monthly_data[forecast_col].round(0)))}. "
-                                    f"Trend: {trend_dir}, Rs {coeffs[0]:,.0f}/month. "
-                                    f"Next {forecast_months} months forecast: {dict(zip(future_names, future_y.round(0)))}. "
-                                    f"Give 3 specific insights and recommendations in bullet points."
-                                )
+                                fc_prompt = (f"Monthly {forecast_col} data: {dict(zip(monthly_data['Month_Name'], monthly_data[forecast_col].round(0)))}. "
+                                    f"Trend: {trend_dir}. Next {forecast_months} months: {dict(zip(future_names, future_y.round(0)))}. "
+                                    f"Give 3 insights in bullet points.")
                                 fc_resp = ask_claude(fc_prompt, api_key)
                                 st.session_state["fc_ai"] = fc_resp
                             except Exception as e:
                                 st.error(str(e))
-
                 if "fc_ai" in st.session_state:
                     st.markdown(f"""
                     <div class='ai-response' style='margin-top:10px;'>
@@ -1017,10 +994,8 @@ else:
         else:
             st.info("📅 Date column wala CSV upload karo forecast ke liye.")
 
-        # ---- PDF EXPORT ----
+        # PDF EXPORT
         st.markdown(f"<div class='section-title'>🖨️ Export PDF Report</div>", unsafe_allow_html=True)
-        st.markdown(f"<div style='color:{TEXT2};font-size:0.88rem;margin-bottom:12px;'>Poori analysis ek clean PDF mein download karo.</div>", unsafe_allow_html=True)
-
         if st.button("📄 Generate PDF Report", use_container_width=True):
             if not PDF_AVAILABLE:
                 st.error("PDF ke liye run karo: pip install fpdf2")
@@ -1029,8 +1004,6 @@ else:
                     pdf = FPDF()
                     pdf.add_page()
                     pdf.set_auto_page_break(auto=True, margin=15)
-
-                    # Title
                     pdf.set_font("Helvetica", "B", 22)
                     pdf.set_text_color(99, 102, 241)
                     pdf.cell(0, 14, "SpendSense AI - Expense Report", ln=True, align="C")
@@ -1042,8 +1015,6 @@ else:
                     pdf.set_line_width(0.8)
                     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
                     pdf.ln(6)
-
-                    # Overview
                     pdf.set_font("Helvetica", "B", 13)
                     pdf.set_text_color(30, 30, 60)
                     pdf.cell(0, 10, "Dataset Overview", ln=True)
@@ -1053,8 +1024,6 @@ else:
                     if "Year" in df.columns:
                         pdf.cell(0, 7, f"Date Range: {int(df['Year'].min())} - {int(df['Year'].max())}", ln=True)
                     pdf.ln(4)
-
-                    # Stats
                     pdf.set_font("Helvetica", "B", 13)
                     pdf.set_text_color(30, 30, 60)
                     pdf.cell(0, 10, "Numeric Summary", ln=True)
@@ -1063,8 +1032,6 @@ else:
                     for col in numeric_cols[:6]:
                         pdf.cell(0, 7, f"{col}: Total={df[col].sum():,.0f}  Avg={df[col].mean():,.0f}  Max={df[col].max():,.0f}", ln=True)
                     pdf.ln(4)
-
-                    # Categories
                     if cat_cols:
                         pdf.set_font("Helvetica", "B", 13)
                         pdf.set_text_color(30, 30, 60)
@@ -1077,11 +1044,8 @@ else:
                             for val, cnt in df[col].value_counts().head(5).items():
                                 pdf.cell(0, 6, f"   {val}: {cnt} records", ln=True)
                         pdf.ln(4)
-
-                    # AI insights
                     ai_sections = {"overview":"Overview","savings":"Savings Tips","income":"Income Ideas","warnings":"Red Flags"}
-                    has_ai = any(f"ai_result_{k}" in st.session_state for k in ai_sections)
-                    if has_ai:
+                    if any(f"ai_result_{k}" in st.session_state for k in ai_sections):
                         pdf.set_font("Helvetica", "B", 13)
                         pdf.set_text_color(30, 30, 60)
                         pdf.cell(0, 10, "AI Insights", ln=True)
@@ -1095,13 +1059,10 @@ else:
                                 txt = st.session_state[f"ai_result_{k}"].encode("latin-1","replace").decode("latin-1")
                                 pdf.multi_cell(0, 6, txt)
                                 pdf.ln(2)
-
-                    # Footer
                     pdf.set_y(-18)
                     pdf.set_font("Helvetica", "I", 8)
                     pdf.set_text_color(150, 150, 170)
                     pdf.cell(0, 8, "Generated by SpendSense AI  |  Powered by Groq", align="C")
-
                     pdf_buf = io.BytesIO()
                     pdf_buf.write(pdf.output())
                     pdf_buf.seek(0)
@@ -1115,7 +1076,6 @@ else:
     # ---- TAB 7: CHAT ----
     with tab7:
         st.markdown(f"<div class='section-title'>💬 Chat with Your Data</div>", unsafe_allow_html=True)
-
         st.markdown(f"""
         <div class='ai-response' style='margin-bottom:16px;'>
             <div style='font-weight:700;color:{ACCENT1};margin-bottom:6px;'>🤖 AI Data Assistant</div>
@@ -1128,15 +1088,14 @@ else:
         if "chat_history" not in st.session_state:
             st.session_state["chat_history"] = []
 
-        # Chat history display
         for msg in st.session_state["chat_history"]:
-            is_ai    = msg["role"] == "assistant"
-            bg       = BG3 if is_ai else BG2
-            icon     = "🤖" if is_ai else "👤"
-            label    = "AI" if is_ai else "You"
-            clr      = ACCENT1 if is_ai else ACCENT2
-            radius   = "14px 14px 14px 4px" if is_ai else "14px 14px 4px 14px"
-            justify  = "flex-start" if is_ai else "flex-end"
+            is_ai   = msg["role"] == "assistant"
+            bg      = BG3 if is_ai else BG2
+            icon    = "🤖" if is_ai else "👤"
+            label   = "AI" if is_ai else "You"
+            clr     = ACCENT1 if is_ai else ACCENT2
+            radius  = "14px 14px 14px 4px" if is_ai else "14px 14px 4px 14px"
+            justify = "flex-start" if is_ai else "flex-end"
             st.markdown(f"""
             <div style='display:flex;justify-content:{justify};margin:8px 0;'>
                 <div style='max-width:82%;background:{bg};border:1px solid {BORDER};
@@ -1149,7 +1108,6 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-        # Quick prompts
         st.markdown(f"<div style='color:{TEXT2};font-size:0.8rem;margin:8px 0 4px;'>💡 Quick questions:</div>", unsafe_allow_html=True)
         qp1, qp2, qp3 = st.columns(3)
         quick_prompts = {
@@ -1163,15 +1121,10 @@ else:
                     st.session_state["prefill_chat"] = full_q
                     st.rerun()
 
-        # Input box
-        prefill = st.session_state.pop("prefill_chat", "")
-        chat_input = st.text_input(
-            "Message:",
-            value=prefill,
+        prefill    = st.session_state.pop("prefill_chat", "")
+        chat_input = st.text_input("Message:", value=prefill,
             placeholder="Koi bhi sawal poochein apne data ke baare mein...",
-            label_visibility="collapsed",
-            key="chat_input_box"
-        )
+            label_visibility="collapsed", key="chat_input_box")
 
         col_send, col_clear = st.columns([5,1])
         with col_send:
@@ -1185,22 +1138,13 @@ else:
             if not api_key:
                 st.error("⚠️ Groq API key sidebar mein daalen.")
             else:
-                lang = st.session_state.get("ai_lang", "English")
-                lang_note = " Reply in Urdu or Roman Urdu." if "Urdu" in lang else " Reply in Hindi." if "Hindi" in lang else " Reply in English."
-                cat_str2 = ""
-                for k, v in list(summary["cat_summary"].items())[:2]:
-                    cat_str2 += f"{k}: {list(v.items())[:3]} "
-
-                sys_msg = (
-                    f"You are a friendly personal finance assistant. "
-                    f"User's expense data: {summary['rows']} rows, "
-                    f"numeric cols: {', '.join(summary['numeric_cols'][:4])}, "
-                    f"categories: {cat_str2}. "
-                    f"Answer questions about this data clearly and concisely.{lang_note}"
-                )
-
+                lang      = st.session_state.get("ai_lang", "English")
+                lang_note = " Reply in Urdu or Roman Urdu." if "Urdu" in lang else " Reply in Hindi." if "Hindi" in lang else ""
+                cat_str2  = " ".join([f"{k}:{list(v.items())[:3]}" for k,v in list(summary["cat_summary"].items())[:2]])
+                sys_msg   = (f"You are a friendly personal finance assistant. "
+                    f"User's data: {summary['rows']} rows, cols: {', '.join(summary['numeric_cols'][:4])}, "
+                    f"categories: {cat_str2}. Answer concisely.{lang_note}")
                 st.session_state["chat_history"].append({"role":"user","content":chat_input.strip()})
-
                 with st.spinner("Soch raha hoon..."):
                     try:
                         client  = Groq(api_key=api_key)
@@ -1208,9 +1152,7 @@ else:
                         history = [{"role":"system","content":sys_msg}]
                         for m in st.session_state["chat_history"][-8:]:
                             history.append({"role":m["role"],"content":m["content"]})
-                        resp = client.chat.completions.create(
-                            model=model, messages=history, max_tokens=600
-                        )
+                        resp  = client.chat.completions.create(model=model, messages=history, max_tokens=600)
                         reply = resp.choices[0].message.content
                         st.session_state["chat_history"].append({"role":"assistant","content":reply})
                         st.rerun()
