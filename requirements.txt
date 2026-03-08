@@ -3,5 +3,5 @@ pandas
 numpy
 plotly
 groq
-fpdf
-statsmodels==1.2.0
+fpdf2
+statsmodels
