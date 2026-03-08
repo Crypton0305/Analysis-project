@@ -628,7 +628,7 @@ else:
                             color_discrete_sequence=[CHART_COLORS[j]])
                         fig.update_layout(**PLOT_TPL)
                         fig.update_traces(marker_line_width=0.4, marker_line_color=PLOT_BG)
-                        st.plotly_chart(fig, width='stretch')
+                        st.plotly_chart(fig, use_container_width=True)
         if "Month_Name" in df.columns and numeric_cols:
             st.markdown(f"<div class='section-title'>📅 Monthly Trend</div>", unsafe_allow_html=True)
             selected_metric = st.selectbox("Select metric:", numeric_cols, key="ts_metric")
