@@ -3,14 +3,22 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from groq import Groq
 import io
 from datetime import datetime
+
 try:
     from fpdf import FPDF
     PDF_AVAILABLE = True
 except ImportError:
     PDF_AVAILABLE = False
+
+# Import logic and theme modules
+from utils import (
+    clean_dataframe, get_numeric_cols, generate_summary_stats,
+    ask_groq, build_ai_prompt, build_forecast_prompt,
+    get_outliers, generate_pdf, chat_with_groq
+)
+from theme import COLOR_THEMES, CURRENCIES, get_theme_vars, get_plot_template, inject_css
 
 # ==============================
 # PAGE CONFIG
@@ -23,382 +31,30 @@ st.set_page_config(
 )
 
 # ==============================
-# THEME VARIABLES
+# THEME — load active theme vars
 # ==============================
-COLOR_THEMES = {
-    "Purple (Default)": {"a1": "#a78bfa", "a2": "#60a5fa", "a3": "#34d399"},
-    "Ocean Blue":        {"a1": "#38bdf8", "a2": "#818cf8", "a3": "#34d399"},
-    "Emerald":           {"a1": "#34d399", "a2": "#60a5fa", "a3": "#fbbf24"},
-    "Rose":              {"a1": "#f87171", "a2": "#fb923c", "a3": "#34d399"},
-    "Amber":             {"a1": "#fbbf24", "a2": "#f97316", "a3": "#34d399"},
-    "Pink":              {"a1": "#e879f9", "a2": "#a78bfa", "a3": "#34d399"},
-}
-CURRENCIES = {"PKR (Rs)":"Rs","USD ($)":"$","EUR (€)":"€","GBP (£)":"£","AED (د.إ)":"د.إ","SAR (﷼)":"﷼"}
+T = get_theme_vars()
+inject_css(T)
 
-if "color_theme" not in st.session_state:
-    st.session_state["color_theme"] = "Purple (Default)"
-if "currency" not in st.session_state:
-    st.session_state["currency"] = "PKR (Rs)"
-
-_t = COLOR_THEMES[st.session_state["color_theme"]]
-CURR_SYMBOL = CURRENCIES.get(st.session_state["currency"], "Rs")
-
-is_dark     = True
-BG          = "#0d0d14"
-BG2         = "#13131f"
-BG3         = "#1a1a2e"
-BORDER      = "#2a2a45"
-TEXT        = "#f0f0f8"
-TEXT2       = "#8888aa"
-ACCENT1     = _t["a1"]
-ACCENT2     = _t["a2"]
-ACCENT3     = _t["a3"]
-SIDEBAR_BG  = "#0f0f1a"
-PLOT_PAPER  = "#0d0d14"
-PLOT_BG     = "#13131f"
-PLOT_GRID   = "#1e1e35"
-FILL_COLOR  = "rgba(167,139,250,0.08)"
-SHADOW      = "0 4px 24px rgba(0,0,0,0.5)"
-CHART_COLORS = [_t["a1"], _t["a2"], _t["a3"], "#fbbf24","#f87171","#e879f9","#22d3ee","#fb923c"]
-
-# ==============================
-# CSS
-# ==============================
-st.markdown(f"""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Syne:wght@700;800&display=swap');
-
-html, body, [class*="css"] {{
-    font-family: 'Plus Jakarta Sans', sans-serif !important;
-    background-color: {BG} !important;
-    color: {TEXT} !important;
-}}
-.main, .block-container {{
-    background: {BG} !important;
-    padding-top: 1.5rem !important;
-}}
-section[data-testid="stSidebar"] {{
-    background: {SIDEBAR_BG} !important;
-    border-right: 1px solid {BORDER} !important;
-    box-shadow: none !important;
-}}
-section[data-testid="stSidebar"] > div {{
-    padding-top: 0 !important;
-}}
-section[data-testid="stSidebar"] * {{ color: {TEXT} !important; }}
-
-.sidebar-label {{
-    font-size: 0.72rem;
-    font-weight: 700;
-    color: {TEXT2};
-    text-transform: uppercase;
-    letter-spacing: 1.2px;
-    margin: 16px 0 7px 0;
-    padding-left: 2px;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-}}
-
-.hero-wrap {{
-    background: linear-gradient(135deg,#13131f,#1a1a2e);
-    border: 1px solid {BORDER};
-    border-radius: 20px;
-    padding: 30px 36px;
-    margin-bottom: 24px;
-    box-shadow: {SHADOW};
-    position: relative;
-    overflow: hidden;
-}}
-.hero-wrap::before {{
-    content:'';
-    position:absolute; top:-80px; right:-80px;
-    width:240px; height:240px;
-    background: radial-gradient(circle, rgba(167,139,250,0.12), transparent 70%);
-    border-radius:50%;
-}}
-.hero-title {{
-    font-family: 'Syne', sans-serif;
-    font-size: 2.2rem;
-    font-weight: 800;
-    background: linear-gradient(135deg, {ACCENT1}, {ACCENT2});
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    margin: 0 0 8px 0;
-}}
-.hero-sub {{ color: {TEXT2}; font-size: 0.95rem; margin: 0; }}
-
-.metric-card {{
-    background: linear-gradient(135deg,#13131f,#1a1a2e);
-    border: 1px solid {BORDER};
-    border-radius: 16px;
-    padding: 22px;
-    margin: 6px 0;
-    box-shadow: {SHADOW};
-    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
-    position: relative;
-    overflow: hidden;
-}}
-.metric-card:hover {{
-    transform: translateY(-4px);
-    box-shadow: 0 12px 32px rgba(167,139,250,0.25);
-    border-color: {ACCENT1};
-}}
-.metric-value {{
-    font-family: 'Syne', sans-serif;
-    font-size: 2rem;
-    font-weight: 800;
-    background: linear-gradient(135deg, {ACCENT1}, {ACCENT2});
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    line-height: 1.1;
-}}
-.metric-label {{
-    font-size: 0.75rem;
-    color: {TEXT2};
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    margin-top: 5px;
-    font-weight: 600;
-}}
-
-.section-title {{
-    font-family: 'Syne', sans-serif;
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: {TEXT};
-    margin: 24px 0 14px 0;
-    padding-bottom: 10px;
-    border-bottom: 2px solid {BORDER};
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}}
-
-.ai-response {{
-    background: linear-gradient(135deg,#0d1b2e,#0f2040);
-    border: 1px solid #1e4a7a;
-    border-left: 4px solid {ACCENT2};
-    border-radius: 14px;
-    padding: 22px 26px;
-    margin: 12px 0;
-    line-height: 1.8;
-    font-size: 0.94rem;
-    color: {TEXT};
-    box-shadow: {SHADOW};
-}}
-
-.upload-hint {{
-    text-align: center;
-    padding: 60px 40px;
-    border: 2px dashed {BORDER};
-    border-radius: 20px;
-    margin: 20px 0;
-    background: #13131f;
-    transition: border-color 0.2s;
-}}
-.upload-hint:hover {{ border-color: {ACCENT1}; }}
-
-.step-card {{
-    background: linear-gradient(135deg,#13131f,#1a1a2e);
-    border: 1px solid {BORDER};
-    border-radius: 14px;
-    padding: 20px;
-    text-align: center;
-    box-shadow: {SHADOW};
-    height: 100%;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-}}
-.step-card:hover {{
-    transform: translateY(-3px);
-    box-shadow: 0 10px 28px rgba(167,139,250,0.2);
-}}
-.step-num {{
-    display: inline-flex;
-    width: 34px; height: 34px;
-    background: linear-gradient(135deg, {ACCENT1}, {ACCENT2});
-    border-radius: 50%;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-weight: 700;
-    font-size: 0.9rem;
-    margin-bottom: 10px;
-}}
-
-.stButton > button {{
-    background: linear-gradient(135deg, {ACCENT1}, {ACCENT2}) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 10px !important;
-    padding: 10px 22px !important;
-    font-family: 'Plus Jakarta Sans', sans-serif !important;
-    font-weight: 600 !important;
-    font-size: 0.9rem !important;
-    transition: all 0.2s ease !important;
-    box-shadow: 0 4px 14px rgba(167,139,250,0.3) !important;
-}}
-.stButton > button:hover {{
-    transform: translateY(-2px) !important;
-    box-shadow: 0 8px 20px rgba(167,139,250,0.5) !important;
-}}
-
-.stTabs [data-baseweb="tab-list"] {{
-    background: {BG3};
-    border-radius: 16px;
-    padding: 6px 8px;
-    gap: 8px;
-    border: 1px solid {BORDER};
-    box-shadow: {SHADOW};
-}}
-.stTabs [data-baseweb="tab"] {{
-    background: transparent !important;
-    color: {TEXT2} !important;
-    border-radius: 10px !important;
-    font-weight: 600 !important;
-    font-size: 0.88rem !important;
-    padding: 10px 22px !important;
-    letter-spacing: 0.2px !important;
-    transition: all 0.2s ease !important;
-    min-width: 120px !important;
-    text-align: center !important;
-}}
-.stTabs [data-baseweb="tab"]:hover {{
-    color: {ACCENT1} !important;
-    background: rgba(167,139,250,0.08) !important;
-}}
-.stTabs [aria-selected="true"] {{
-    background: linear-gradient(135deg, {ACCENT1}, {ACCENT2}) !important;
-    color: white !important;
-    box-shadow: 0 4px 14px rgba(167,139,250,0.4) !important;
-}}
-
-.stTextInput > div > div,
-.stSelectbox > div > div,
-.stTextArea > div > div {{
-    background: {BG2} !important;
-    border-color: {BORDER} !important;
-    color: {TEXT} !important;
-    border-radius: 9px !important;
-}}
-
-.stDataFrame {{ border-radius: 12px !important; overflow: hidden !important; }}
-
-::-webkit-scrollbar {{ width: 5px; }}
-::-webkit-scrollbar-track {{ background: {BG}; }}
-::-webkit-scrollbar-thumb {{ background: {BORDER}; border-radius: 3px; }}
-
-.js-plotly-plot {{ border-radius: 14px; overflow: hidden; }}
-
-/* ===== MOBILE RESPONSIVE ===== */
-@media (max-width: 768px) {{
-    .hero-title {{ font-size: 1.4rem !important; }}
-    .hero-wrap {{ padding: 18px 16px !important; }}
-    .metric-value {{ font-size: 1.4rem !important; }}
-    .metric-card {{ padding: 14px !important; }}
-    .section-title {{ font-size: 0.95rem !important; }}
-    .stTabs [data-baseweb="tab"] {{
-        padding: 8px 10px !important;
-        min-width: 70px !important;
-        font-size: 0.75rem !important;
-    }}
-    .ai-response {{ padding: 14px 16px !important; }}
-    .block-container {{ padding-left: 0.5rem !important; padding-right: 0.5rem !important; }}
-}}
-</style>
-""", unsafe_allow_html=True)
-
-# ==============================
-# PLOTLY TEMPLATE
-# ==============================
-PLOT_TPL = dict(
-    paper_bgcolor=PLOT_PAPER,
-    plot_bgcolor=PLOT_BG,
-    font=dict(color=TEXT, family="Plus Jakarta Sans"),
-    xaxis=dict(gridcolor=PLOT_GRID, linecolor=BORDER, tickfont=dict(color=TEXT2), showgrid=True),
-    yaxis=dict(gridcolor=PLOT_GRID, linecolor=BORDER, tickfont=dict(color=TEXT2), showgrid=True),
-    colorway=CHART_COLORS,
-    margin=dict(t=44, b=36, l=36, r=16),
-    title_font=dict(color=TEXT, size=14),
-    title_x=0.02,
-    legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(color=TEXT2), bordercolor=BORDER, borderwidth=1),
-)
-
-# ==============================
-# HELPER FUNCTIONS
-# ==============================
-def clean_dataframe(df):
-    df = df.drop_duplicates()
-    for col in df.select_dtypes(include=np.number).columns:
-        df[col] = df[col].fillna(df[col].median())
-    for col in df.select_dtypes(include=["object"]).columns:
-        if df[col].mode().shape[0] > 0:
-            df[col] = df[col].fillna(df[col].mode()[0])
-    for col in df.columns:
-        if "date" in col.lower():
-            df[col] = pd.to_datetime(df[col], errors="coerce")
-            df["Year"]       = df[col].dt.year
-            df["Month"]      = df[col].dt.month
-            df["Month_Name"] = df[col].dt.strftime("%b")
-            df["Day"]        = df[col].dt.day
-    return df
-
-def get_numeric_cols(df):
-    skip = ["Year","Month","Day","Row_Total","Row_Mean"]
-    return [c for c in df.select_dtypes(include=np.number).columns if c not in skip]
-
-def generate_summary_stats(df):
-    numeric_cols = get_numeric_cols(df)
-    cat_cols     = df.select_dtypes(include=["object"]).columns.tolist()
-    summary = {
-        "rows": len(df), "columns": len(df.columns),
-        "numeric_cols": numeric_cols, "cat_cols": cat_cols,
-        "describe": df[numeric_cols].describe().to_string() if numeric_cols else "N/A",
-        "corr": df[numeric_cols].corr().to_string() if len(numeric_cols) > 1 else "N/A",
-        "cat_summary": {}
-    }
-    for col in cat_cols[:3]:
-        summary["cat_summary"][col] = df[col].value_counts().head(5).to_dict()
-    return summary
-
-def ask_claude(prompt, api_key):
-    client = Groq(api_key=api_key)
-    model  = st.session_state.get("groq_model", "llama-3.1-8b-instant")
-    resp   = client.chat.completions.create(
-        model=model,
-        messages=[{"role":"user","content":prompt}],
-        max_tokens=1000,
-    )
-    return resp.choices[0].message.content
-
-def build_ai_prompt(analysis_type, summary, extra=""):
-    cat_str = ""
-    for k, v in list(summary["cat_summary"].items())[:2]:
-        cat_str += f"{k}: {list(v.items())[:3]}\n"
-    base = (
-        f"Expense data: {summary['rows']} rows. "
-        f"Numeric cols: {', '.join(summary['numeric_cols'][:4])}. "
-        f"Categories: {cat_str.strip()}. "
-    )
-    extra_short = str(extra)[:200] if extra else ""
-    lang = st.session_state.get("ai_lang", "English")
-    if "Urdu" in lang:
-        lang_note = " Respond in Urdu or Roman Urdu. Be friendly."
-    elif "Hindi" in lang:
-        lang_note = " Respond in Hindi. Be friendly."
-    else:
-        lang_note = ""
-    prompts = {
-        "overview": base + "Give a 3-sentence overview of this spending data and financial health." + lang_note,
-        "savings":  base + "Give 4 specific savings tips. Use bullet points. Be concise." + lang_note,
-        "income":   base + "Suggest 4 ways to grow income or optimize finances. Bullet points." + lang_note,
-        "warnings": base + "List 3 spending red flags from this data. Be direct and brief." + lang_note,
-        "monthly":  base + "Analyze monthly pattern. Recommend a budget split. Keep it short." + lang_note,
-        "custom":   base + f"Answer this: {extra_short}" + lang_note,
-    }
-    return prompts.get(analysis_type, prompts["overview"])
+# Unpack theme vars for convenience
+BG          = T["BG"]
+BG2         = T["BG2"]
+BG3         = T["BG3"]
+BORDER      = T["BORDER"]
+TEXT        = T["TEXT"]
+TEXT2       = T["TEXT2"]
+ACCENT1     = T["ACCENT1"]
+ACCENT2     = T["ACCENT2"]
+ACCENT3     = T["ACCENT3"]
+SHADOW      = T["SHADOW"]
+FILL_COLOR  = T["FILL_COLOR"]
+CHART_COLORS= T["CHART_COLORS"]
+CURR_SYMBOL = T["CURR_SYMBOL"]
+SIDEBAR_BG  = T["SIDEBAR_BG"]
+PLOT_PAPER  = T["PLOT_PAPER"]
+PLOT_BG     = T["PLOT_BG"]
+PLOT_GRID   = T["PLOT_GRID"]
+PLOT_TPL    = get_plot_template(T)
 
 # ==============================
 # SIDEBAR
@@ -446,7 +102,7 @@ with st.sidebar:
 
     st.markdown(f"<div class='sidebar-label'>🌐 AI Language</div>", unsafe_allow_html=True)
     ai_lang = st.selectbox("lang", label_visibility="collapsed",
-        options=["English", "Urdu (اردو)", "Hindi (हिंदी)"], index=0)
+        options=["English", "Urdu (اردو)"], index=0)
     st.session_state["ai_lang"] = ai_lang
 
     # ---- COLOR THEME ----
@@ -476,17 +132,62 @@ with st.sidebar:
 
     # ---- UPLOAD ----
     st.markdown(f"<div class='sidebar-label'>📁 Upload CSV</div>", unsafe_allow_html=True)
-    uploaded_file = st.file_uploader("CSV", type=["csv"], label_visibility="collapsed")
-
     st.markdown(f"""
-    <div style='margin-top:14px;padding:11px 13px;background:#13131f;
-    border-radius:10px;border:1px solid {BORDER};font-size:0.76rem;color:{TEXT2};line-height:1.75;'>
-        <b style='color:{ACCENT1};'>Supported columns:</b><br>
-        • Date (auto-detected)<br>
-        • Numeric spend columns<br>
-        • Category columns
+    <style>
+    /* Hide default uploader box, keep only functionality */
+    section[data-testid="stSidebar"] [data-testid="stFileUploadDropzone"] {{
+        background: transparent !important;
+        border: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }}
+    section[data-testid="stSidebar"] [data-testid="stFileUploadDropzone"] > div {{
+        background: transparent !important;
+        border: none !important;
+        padding: 0 !important;
+    }}
+    section[data-testid="stSidebar"] [data-testid="stFileUploaderDropzoneInstructions"] {{
+        display: none !important;
+    }}
+    section[data-testid="stSidebar"] .stFileUploader > label {{
+        display: none !important;
+    }}
+    section[data-testid="stSidebar"] [data-testid="stFileUploadDropzone"] button {{
+        display: none !important;
+    }}
+    /* Make entire styled box clickable via uploader overlay */
+    .sidebar-upload-wrap {{
+        position: relative;
+        cursor: pointer;
+    }}
+    .sidebar-upload-wrap [data-testid="stFileUploadDropzone"] {{
+        position: absolute !important;
+        inset: 0 !important;
+        opacity: 0 !important;
+        cursor: pointer !important;
+        z-index: 10 !important;
+    }}
+    </style>
+    <div style='border:2px dashed {ACCENT1};border-radius:14px;
+    background:linear-gradient(135deg,#13131f,#1a1a2e);
+    padding:18px 12px 14px 12px;text-align:center;margin-bottom:6px;
+    box-shadow:0 0 18px rgba(167,139,250,0.08);cursor:pointer;
+    transition:all 0.25s ease;'>
+        <div style='font-size:2rem;margin-bottom:6px;'>📂</div>
+        <div style='font-family:Syne,sans-serif;font-size:0.88rem;font-weight:700;
+        color:{TEXT};margin-bottom:3px;'>Drop CSV here</div>
+        <div style='color:{TEXT2};font-size:0.73rem;margin-bottom:10px;'>or click to browse</div>
+        <div style='display:flex;justify-content:center;gap:6px;flex-wrap:wrap;'>
+            <span style='background:{ACCENT1}22;border:1px solid {ACCENT1}55;color:{ACCENT1};
+            padding:2px 7px;border-radius:20px;font-size:0.68rem;font-weight:600;'>📅 Date</span>
+            <span style='background:{ACCENT2}22;border:1px solid {ACCENT2}55;color:{ACCENT2};
+            padding:2px 7px;border-radius:20px;font-size:0.68rem;font-weight:600;'>💰 Amount</span>
+            <span style='background:{ACCENT3}22;border:1px solid {ACCENT3}55;color:{ACCENT3};
+            padding:2px 7px;border-radius:20px;font-size:0.68rem;font-weight:600;'>🏷️ Category</span>
+        </div>
     </div>
     """, unsafe_allow_html=True)
+    uploaded_file = st.file_uploader("CSV", type=["csv"], label_visibility="collapsed")
 
 # ==============================
 # MAIN CONTENT
@@ -518,13 +219,24 @@ if uploaded_file is None and "df" not in st.session_state:
             </div>
             """, unsafe_allow_html=True)
 
+    # Hide default uploader UI completely, overlay it on custom box
     st.markdown(f"""
-    <div class='upload-hint'>
-        <div style='font-size:3.5rem;margin-bottom:14px;'>📊</div>
-        <div style='font-family:Syne,sans-serif;font-size:1.2rem;font-weight:700;color:{TEXT};margin-bottom:8px;'>
-            Upload your expense CSV from the sidebar
+    <div class='upload-hint' style='padding-bottom:24px;cursor:pointer;'>
+        <div class='upload-icon-wrap'>📂</div>
+        <div style='font-family:Syne,sans-serif;font-size:1.25rem;font-weight:800;color:{TEXT};margin-bottom:8px;'>
+            Upload your CSV from the sidebar 👈
         </div>
-        <div style='color:{TEXT2};font-size:0.88rem;'>Supports any CSV with date, amount, and category columns</div>
+        <div style='color:{TEXT2};font-size:0.86rem;margin-bottom:10px;'>
+            Supports any CSV with date, amount, and category columns
+        </div>
+        <div style='display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:4px;'>
+            <span style='background:{ACCENT1}22;border:1px solid {ACCENT1}55;color:{ACCENT1};
+            padding:3px 10px;border-radius:20px;font-size:0.75rem;font-weight:600;'>📅 Date</span>
+            <span style='background:{ACCENT2}22;border:1px solid {ACCENT2}55;color:{ACCENT2};
+            padding:3px 10px;border-radius:20px;font-size:0.75rem;font-weight:600;'>💰 Amount</span>
+            <span style='background:{ACCENT3}22;border:1px solid {ACCENT3}55;color:{ACCENT3};
+            padding:3px 10px;border-radius:20px;font-size:0.75rem;font-weight:600;'>🏷️ Category</span>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -548,6 +260,8 @@ else:
         df_raw = pd.read_csv(uploaded_file)
         df     = clean_dataframe(df_raw)
         st.session_state["df"] = df
+        # Reset eda_df so EDA tab picks up new file
+        st.session_state["eda_df"] = df.copy()
 
     df           = st.session_state["df"]
     numeric_cols = get_numeric_cols(df)
@@ -557,9 +271,9 @@ else:
     # ---- AUTO SUMMARY ----
     df_key = f"auto_{df.shape[0]}_{df.shape[1]}"
     if api_key and df_key not in st.session_state:
-        with st.spinner("🤖 AI data analyze kar raha hai..."):
+        with st.spinner("🤖 AI is analyzing your data..."):
             try:
-                auto_resp = ask_claude(build_ai_prompt("overview", summary), api_key)
+                auto_resp = ask_groq(build_ai_prompt("overview", summary), api_key)
                 st.session_state[df_key] = auto_resp
                 st.session_state["ai_result_overview"] = auto_resp
             except:
@@ -613,7 +327,7 @@ else:
                 col_avg   = df[col_name].mean()
                 col_max   = df[col_name].max()
                 st.markdown(f"""
-                <div class='metric-card'>
+                <div class='metric-card' style='text-align:center;'>
                     <div style='font-size:0.72rem;font-weight:700;color:{TEXT2};
                     text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;'>{col_name}</div>
                     <div class='metric-value' style='font-size:1.7rem;'>{col_total:,.0f}</div>
@@ -630,8 +344,8 @@ else:
     # TABS
     # ==============================
     st.markdown("<br>", unsafe_allow_html=True)
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "📊 Analytics", "🗃️ Raw Data", "🔬 Deep Dive",
+    tab1, tab_eda, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+        "📊 Analytics", "🔍 EDA", "🗃️ Raw Data", "🔬 Deep Dive",
         "🤖 AI Insights", "🎯 Savings Goal", "📈 Forecast & PDF", "💬 Chat"
     ])
 
@@ -707,6 +421,204 @@ else:
                 title="Correlation Heatmap")
             fig_heat.update_layout(**PLOT_TPL)
             st.plotly_chart(fig_heat, use_container_width=True)
+
+    # ---- TAB EDA ----
+    with tab_eda:
+        if "eda_df" not in st.session_state:
+            st.session_state["eda_df"] = df.copy()
+        eda_df = st.session_state["eda_df"]
+
+        st.markdown(f"<div class='section-title'>🔍 Full EDA Report</div>", unsafe_allow_html=True)
+
+        # ── OVERVIEW CARDS ──
+        total_missing = eda_df.isnull().sum().sum()
+        dup_count     = eda_df.duplicated().sum()
+        e1,e2,e3,e4   = st.columns(4)
+        for cw,(icon,val,lbl,clr) in zip([e1,e2,e3,e4],[
+            ("📋", f"{eda_df.shape[0]:,}",    "Total Rows",      ACCENT2),
+            ("🗂️", f"{eda_df.shape[1]}",      "Total Columns",   ACCENT1),
+            ("❓", f"{total_missing:,}",       "Missing Values",  "#f87171" if total_missing>0 else ACCENT3),
+            ("👯", f"{dup_count:,}",           "Duplicate Rows",  "#fbbf24" if dup_count>0 else ACCENT3),
+        ]):
+            with cw:
+                st.markdown(f"""
+                <div class='metric-card' style='text-align:center;'>
+                    <div style='font-size:1.4rem;margin-bottom:6px;'>{icon}</div>
+                    <div style='font-size:1.6rem;font-weight:800;color:{clr};'>{val}</div>
+                    <div class='metric-label'>{lbl}</div>
+                </div>""", unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # ── COLUMN INFO TABLE ──
+        st.markdown(f"<div class='section-title'>📋 Column Info — Data Types & Unique Values</div>", unsafe_allow_html=True)
+        col_info = []
+        for c in eda_df.columns:
+            miss     = eda_df[c].isnull().sum()
+            miss_pct = round(miss / len(eda_df) * 100, 1)
+            uniq     = eda_df[c].nunique()
+            dtype    = str(eda_df[c].dtype)
+            sample   = str(eda_df[c].dropna().iloc[0]) if len(eda_df[c].dropna()) > 0 else "N/A"
+            col_info.append({"Column": c, "Type": dtype, "Unique": uniq,
+                             "Missing": miss, "Missing %": f"{miss_pct}%", "Sample": sample})
+        st.dataframe(pd.DataFrame(col_info), use_container_width=True, hide_index=True)
+
+        # ── MISSING VALUES HEATMAP ──
+        if total_missing > 0:
+            st.markdown(f"<div class='section-title'>❓ Missing Values Heatmap</div>", unsafe_allow_html=True)
+            miss_df = eda_df.isnull().astype(int)
+            fig_miss = px.imshow(miss_df.T, color_continuous_scale=["#1a1a2e", "#f87171"],
+                title="Missing Values (Red = Missing)", aspect="auto")
+            fig_miss.update_layout(**PLOT_TPL)
+            st.plotly_chart(fig_miss, use_container_width=True)
+        else:
+            st.success("✅ No missing values found!")
+
+        # ── KEY STATS ──
+        if get_numeric_cols(eda_df):
+            st.markdown(f"<div class='section-title'>📊 Key Stats — Mean, Median, Mode, Std</div>", unsafe_allow_html=True)
+            nc = get_numeric_cols(eda_df)
+            stats_rows = []
+            for c in nc:
+                stats_rows.append({
+                    "Column": c,
+                    "Mean":   round(eda_df[c].mean(), 2),
+                    "Median": round(eda_df[c].median(), 2),
+                    "Mode":   round(eda_df[c].mode()[0], 2) if len(eda_df[c].mode()) > 0 else "N/A",
+                    "Std":    round(eda_df[c].std(), 2),
+                    "Min":    round(eda_df[c].min(), 2),
+                    "Max":    round(eda_df[c].max(), 2),
+                })
+            st.dataframe(pd.DataFrame(stats_rows), use_container_width=True, hide_index=True)
+
+        # ── OUTLIERS ──
+        if get_numeric_cols(eda_df):
+            st.markdown(f"<div class='section-title'>📦 Outlier Detection</div>", unsafe_allow_html=True)
+            nc = get_numeric_cols(eda_df)
+            sel_out = st.selectbox("Select column:", nc, key="eda_out_col")
+            fig_out = px.box(eda_df, y=sel_out, title=f"{sel_out} — Outliers (Boxplot)",
+                color_discrete_sequence=[ACCENT1], points="all")
+            fig_out.update_layout(**PLOT_TPL)
+            st.plotly_chart(fig_out, use_container_width=True)
+            q1   = eda_df[sel_out].quantile(0.25)
+            q3   = eda_df[sel_out].quantile(0.75)
+            iqr  = q3 - q1
+            outs = eda_df[(eda_df[sel_out] < q1 - 1.5*iqr) | (eda_df[sel_out] > q3 + 1.5*iqr)]
+            st.markdown(f"""
+            <div class='ai-response' style='margin-top:4px;'>
+                <b style='color:{ACCENT1};'>{sel_out}</b> has
+                <b style='color:#f87171;'>{len(outs)} outliers</b>
+                (IQR method: &lt; {q1-1.5*iqr:,.1f} or &gt; {q3+1.5*iqr:,.1f})
+            </div>""", unsafe_allow_html=True)
+
+        # ══════════════════════════════
+        # EDITING SECTION
+        # ══════════════════════════════
+        st.markdown(f"<div class='section-title'>✏️ Edit Your Data</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='color:{TEXT2};font-size:0.85rem;margin-bottom:14px;'>Changes will appear in preview below — then Download or Apply to dashboard.</div>", unsafe_allow_html=True)
+
+        ed1, ed2 = st.columns(2)
+
+        # ── FIX MISSING VALUES ──
+        with ed1:
+            st.markdown(f"<div style='font-weight:700;color:{ACCENT1};margin-bottom:8px;'>❓ Missing Values Fix</div>", unsafe_allow_html=True)
+            nc2 = get_numeric_cols(eda_df)
+            if nc2:
+                miss_col  = st.selectbox("Column:", nc2, key="eda_miss_col")
+                miss_strat= st.selectbox("Strategy:", ["Mean","Median","Mode","Zero"], key="eda_miss_strat")
+                if st.button("✅ Fill Missing", key="eda_fill", use_container_width=True):
+                    tmp = st.session_state["eda_df"].copy()
+                    if miss_strat == "Mean":   tmp[miss_col].fillna(tmp[miss_col].mean(), inplace=True)
+                    elif miss_strat == "Median": tmp[miss_col].fillna(tmp[miss_col].median(), inplace=True)
+                    elif miss_strat == "Mode":   tmp[miss_col].fillna(tmp[miss_col].mode()[0], inplace=True)
+                    else:                        tmp[miss_col].fillna(0, inplace=True)
+                    st.session_state["eda_df"] = tmp
+                    st.success(f"✅ {miss_col} — missing values filled using {miss_strat}!")
+                    st.rerun()
+
+        # ── DROP DUPLICATES ──
+        with ed2:
+            st.markdown(f"<div style='font-weight:700;color:{ACCENT1};margin-bottom:8px;'>👯 Duplicate Rows</div>", unsafe_allow_html=True)
+            dup_now = st.session_state["eda_df"].duplicated().sum()
+            st.markdown(f"<div style='color:{TEXT2};font-size:0.85rem;margin-bottom:8px;'>{dup_now} duplicate rows found</div>", unsafe_allow_html=True)
+            if st.button("🗑️ Delete Duplicates", key="eda_dup", use_container_width=True):
+                tmp = st.session_state["eda_df"].drop_duplicates().reset_index(drop=True)
+                removed = len(st.session_state["eda_df"]) - len(tmp)
+                st.session_state["eda_df"] = tmp
+                st.success(f"✅ {removed} duplicate rows hata diye!")
+                st.rerun()
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        ed3, ed4 = st.columns(2)
+
+        # ── RENAME COLUMN ──
+        with ed3:
+            st.markdown(f"<div style='font-weight:700;color:{ACCENT1};margin-bottom:8px;'>✏️ Rename Column</div>", unsafe_allow_html=True)
+            ren_old = st.selectbox("Column:", list(eda_df.columns), key="eda_ren_old")
+            ren_new = st.text_input("New name:", key="eda_ren_new", placeholder="Naya naam likho...")
+            if st.button("✅ Rename", key="eda_rename", use_container_width=True):
+                if ren_new.strip():
+                    tmp = st.session_state["eda_df"].rename(columns={ren_old: ren_new.strip()})
+                    st.session_state["eda_df"] = tmp
+                    st.success(f"✅ '{ren_old}' → '{ren_new.strip()}'")
+                    st.rerun()
+
+        # ── DROP COLUMN ──
+        with ed4:
+            st.markdown(f"<div style='font-weight:700;color:{ACCENT1};margin-bottom:8px;'>🗑️ Drop Column</div>", unsafe_allow_html=True)
+            drop_col = st.selectbox("Column:", list(eda_df.columns), key="eda_drop_col")
+            if st.button("🗑️ Drop Column", key="eda_drop", use_container_width=True):
+                tmp = st.session_state["eda_df"].drop(columns=[drop_col])
+                st.session_state["eda_df"] = tmp
+                st.success(f"✅ '{drop_col}' column hata diya!")
+                st.rerun()
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # ── DATA TYPE CHANGE ──
+        st.markdown(f"<div style='font-weight:700;color:{ACCENT1};margin-bottom:8px;'>🔄 Change Data Type</div>", unsafe_allow_html=True)
+        dt1, dt2, dt3 = st.columns(3)
+        with dt1: dtype_col = st.selectbox("Column:", list(eda_df.columns), key="eda_dtype_col")
+        with dt2: dtype_new = st.selectbox("New Type:", ["int","float","str","datetime"], key="eda_dtype_new")
+        with dt3:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("✅ Change Type", key="eda_dtype_btn", use_container_width=True):
+                try:
+                    tmp = st.session_state["eda_df"].copy()
+                    if dtype_new == "int":       tmp[dtype_col] = pd.to_numeric(tmp[dtype_col], errors="coerce").astype("Int64")
+                    elif dtype_new == "float":   tmp[dtype_col] = pd.to_numeric(tmp[dtype_col], errors="coerce")
+                    elif dtype_new == "str":     tmp[dtype_col] = tmp[dtype_col].astype(str)
+                    elif dtype_new == "datetime":tmp[dtype_col] = pd.to_datetime(tmp[dtype_col], errors="coerce")
+                    st.session_state["eda_df"] = tmp
+                    st.success(f"✅ '{dtype_col}' → {dtype_new}")
+                    st.rerun()
+                except Exception as ex:
+                    st.error(f"Error: {ex}")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # ── PREVIEW EDITED DATA ──
+        st.markdown(f"<div class='section-title'>👁️ Edited Data Preview</div>", unsafe_allow_html=True)
+        st.dataframe(st.session_state["eda_df"], use_container_width=True, height=300)
+
+        # ── DOWNLOAD + APPLY ──
+        dl1, dl2, dl3 = st.columns(3)
+        with dl1:
+            csv_eda = io.StringIO()
+            st.session_state["eda_df"].to_csv(csv_eda, index=False)
+            st.download_button("⬇️ Download Edited CSV", csv_eda.getvalue().encode(),
+                file_name=f"edited_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv", use_container_width=True)
+        with dl2:
+            if st.button("🚀 Apply to Dashboard", key="eda_apply", use_container_width=True):
+                st.session_state["df"] = st.session_state["eda_df"].copy()
+                st.success("✅ Edited data applied to the entire dashboard!")
+                st.rerun()
+        with dl3:
+            if st.button("🔄 Reset to Original", key="eda_reset", use_container_width=True):
+                st.session_state["eda_df"] = df.copy()
+                st.success("✅ Original data restored!")
+                st.rerun()
 
     # ---- TAB 2: RAW DATA ----
     with tab2:
@@ -788,7 +700,7 @@ else:
                 with st.spinner("🤔 Groq AI is analyzing your financial data..."):
                     try:
                         prompt   = build_ai_prompt(analysis_key, summary, extra_context)
-                        response = ask_claude(prompt, api_key)
+                        response = ask_groq(prompt, api_key)
                         st.session_state[f"ai_result_{analysis_key}"] = response
                     except Exception as e:
                         st.error(f"API Error: {str(e)}")
@@ -822,7 +734,7 @@ else:
                     else:
                         with st.spinner("Analyzing..."):
                             try:
-                                result = ask_claude(build_ai_prompt(key, summary), api_key)
+                                result = ask_groq(build_ai_prompt(key, summary), api_key)
                                 st.session_state[f"quick_result_{key}"] = result
                             except Exception as e:
                                 st.error(str(e))
@@ -889,9 +801,9 @@ else:
             if pct >= 100:
                 st.success("🎉 Goal Achieved! Mubarak ho!")
             elif pct >= 75:
-                st.info(f"🔥 Almost there! Sirf {CURR_SYMBOL} {remaining:,.0f} aur chahiye!")
+                st.info(f"🔥 Almost there! Only {CURR_SYMBOL} {remaining:,.0f} more to go!")
             elif monthly_avg > 0:
-                st.info(f"📅 Current rate pe approx {months_left} months mein goal achieve hoga.")
+                st.info(f"📅 At current rate, goal will be achieved in approx {months_left} months.")
 
         st.markdown(f"<div class='section-title'>📋 Quick Goals Overview</div>", unsafe_allow_html=True)
         preset_goals = {"Emergency Fund":150000,"New Phone":80000,"Vacation":100000,"New Laptop":120000}
@@ -978,7 +890,7 @@ else:
                                 fc_prompt = (f"Monthly {forecast_col} data: {dict(zip(monthly_data['Month_Name'], monthly_data[forecast_col].round(0)))}. "
                                     f"Trend: {trend_dir}. Next {forecast_months} months: {dict(zip(future_names, future_y.round(0)))}. "
                                     f"Give 3 insights in bullet points.")
-                                fc_resp = ask_claude(fc_prompt, api_key)
+                                fc_resp = ask_groq(fc_prompt, api_key)
                                 st.session_state["fc_ai"] = fc_resp
                             except Exception as e:
                                 st.error(str(e))
@@ -990,15 +902,15 @@ else:
                     </div>
                     """, unsafe_allow_html=True)
             else:
-                st.info("📅 Forecast ke liye kam az kam 2 months ka data chahiye.")
+                st.info("📅 At least 2 months of data is required for forecasting.")
         else:
-            st.info("📅 Date column wala CSV upload karo forecast ke liye.")
+            st.info("📅 Please upload a CSV with a date column to use the forecast feature.")
 
         # PDF EXPORT
         st.markdown(f"<div class='section-title'>🖨️ Export PDF Report</div>", unsafe_allow_html=True)
         if st.button("📄 Generate PDF Report", use_container_width=True):
             if not PDF_AVAILABLE:
-                st.error("PDF ke liye run karo: pip install fpdf2")
+                st.error("Please run: pip install fpdf2 to enable PDF export.")
             else:
                 try:
                     pdf = FPDF()
@@ -1080,7 +992,7 @@ else:
         <div class='ai-response' style='margin-bottom:16px;'>
             <div style='font-weight:700;color:{ACCENT1};margin-bottom:6px;'>🤖 AI Data Assistant</div>
             <span style='color:{TEXT2};font-size:0.87rem;'>
-            Apne expense data ke baare mein koi bhi sawal seedha poochein — Urdu, Hindi ya English mein.
+            Ask any question about your expense data directly — in English or Urdu.
             </span>
         </div>
         """, unsafe_allow_html=True)
@@ -1111,9 +1023,9 @@ else:
         st.markdown(f"<div style='color:{TEXT2};font-size:0.8rem;margin:8px 0 4px;'>💡 Quick questions:</div>", unsafe_allow_html=True)
         qp1, qp2, qp3 = st.columns(3)
         quick_prompts = {
-            "Sabse bada kharcha?": "Mera sabse bada kharcha kaunsi category mein hai?",
-            "Best savings month?": "Kis month mein maine sabse zyada save kiya?",
-            "Budget suggestion?":  "Mujhe ek simple monthly budget suggest karo.",
+            "Biggest expense?": "Which category has my biggest expenses?",
+            "Best savings month?": "In which month did I save the most?",
+            "Budget suggestion?":  "Suggest me a simple monthly budget.",
         }
         for col_q, (label_q, full_q) in zip([qp1,qp2,qp3], quick_prompts.items()):
             with col_q:
@@ -1123,7 +1035,7 @@ else:
 
         prefill    = st.session_state.pop("prefill_chat", "")
         chat_input = st.text_input("Message:", value=prefill,
-            placeholder="Koi bhi sawal poochein apne data ke baare mein...",
+            placeholder="Ask anything about your expense data...",
             label_visibility="collapsed", key="chat_input_box")
 
         col_send, col_clear = st.columns([5,1])
@@ -1136,24 +1048,21 @@ else:
 
         if send_btn and chat_input.strip():
             if not api_key:
-                st.error("⚠️ Groq API key sidebar mein daalen.")
+                st.error("⚠️ Please enter your Groq API key in the sidebar.")
             else:
                 lang      = st.session_state.get("ai_lang", "English")
-                lang_note = " Reply in Urdu or Roman Urdu." if "Urdu" in lang else " Reply in Hindi." if "Hindi" in lang else ""
+                lang_note = " Reply in Urdu or Roman Urdu." if "Urdu" in lang else ""
                 cat_str2  = " ".join([f"{k}:{list(v.items())[:3]}" for k,v in list(summary["cat_summary"].items())[:2]])
                 sys_msg   = (f"You are a friendly personal finance assistant. "
                     f"User's data: {summary['rows']} rows, cols: {', '.join(summary['numeric_cols'][:4])}, "
                     f"categories: {cat_str2}. Answer concisely.{lang_note}")
                 st.session_state["chat_history"].append({"role":"user","content":chat_input.strip()})
-                with st.spinner("Soch raha hoon..."):
+                with st.spinner("Thinking..."):
                     try:
-                        client  = Groq(api_key=api_key)
-                        model   = st.session_state.get("groq_model","llama-3.1-8b-instant")
                         history = [{"role":"system","content":sys_msg}]
                         for m in st.session_state["chat_history"][-8:]:
                             history.append({"role":m["role"],"content":m["content"]})
-                        resp  = client.chat.completions.create(model=model, messages=history, max_tokens=600)
-                        reply = resp.choices[0].message.content
+                        reply = chat_with_groq(api_key, history)
                         st.session_state["chat_history"].append({"role":"assistant","content":reply})
                         st.rerun()
                     except Exception as e:
