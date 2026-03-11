@@ -14,7 +14,7 @@ except ImportError:
 
 # Import logic and theme modules
 from utils import (
-    clean_dataframe, get_numeric_cols, generate_summary_stats,
+    clean_dataframe, parse_dates, get_numeric_cols, generate_summary_stats,
     ask_groq, build_ai_prompt, build_forecast_prompt,
     get_outliers, generate_pdf, chat_with_groq
 )
@@ -241,7 +241,7 @@ if uploaded_file is None and "df" not in st.session_state:
     """, unsafe_allow_html=True)
 
     st.markdown(f"<div class='section-title'>🎲 No CSV? Try Sample Data</div>", unsafe_allow_html=True)
-    if st.button("▶ Load Sample Data"):
+    if st.button("Load Sample Data"):
         np.random.seed(42)
         categories = ["Food","Transport","Shopping","Utilities","Entertainment","Health"]
         months = pd.date_range("2024-01-01", periods=120, freq="W")
@@ -257,13 +257,20 @@ if uploaded_file is None and "df" not in st.session_state:
 
 else:
     if uploaded_file is not None:
-        df_raw = pd.read_csv(uploaded_file)
-        df     = clean_dataframe(df_raw)
-        st.session_state["df"] = df
-        # Reset eda_df so EDA tab picks up new file
-        st.session_state["eda_df"] = df.copy()
+        file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+        if st.session_state.get("uploaded_file_id") != file_id:
+            # Genuinely new file — reset everything
+            df_raw = pd.read_csv(uploaded_file)
+            df_raw = parse_dates(df_raw)
+            st.session_state["df"]               = df_raw
+            st.session_state["eda_df"]           = df_raw.copy()
+            st.session_state["uploaded_file_id"] = file_id
 
-    df           = st.session_state["df"]
+    # Always use eda_df as source of truth for entire dashboard
+    if "eda_df" not in st.session_state:
+        st.session_state["eda_df"] = st.session_state["df"].copy()
+
+    df           = st.session_state["eda_df"]
     numeric_cols = get_numeric_cols(df)
     cat_cols     = df.select_dtypes(include=["object"]).columns.tolist()
     summary      = generate_summary_stats(df)
@@ -271,7 +278,7 @@ else:
     # ---- AUTO SUMMARY ----
     df_key = f"auto_{df.shape[0]}_{df.shape[1]}"
     if api_key and df_key not in st.session_state:
-        with st.spinner("🤖 AI is analyzing your data..."):
+        with st.spinner("AI is analyzing your data..."):
             try:
                 auto_resp = ask_groq(build_ai_prompt("overview", summary), api_key)
                 st.session_state[df_key] = auto_resp
@@ -424,21 +431,81 @@ else:
 
     # ---- TAB EDA ----
     with tab_eda:
-        if "eda_df" not in st.session_state:
-            st.session_state["eda_df"] = df.copy()
-        eda_df = st.session_state["eda_df"]
+        # ── HANDLE EDITS FIRST (before any rendering) ──
+        if st.session_state.get("_eda_action"):
+            action = st.session_state.pop("_eda_action")
+            tmp    = st.session_state["eda_df"].copy()
+
+            if action == "fill_missing":
+                col  = st.session_state.get("_eda_miss_col")
+                strat= st.session_state.get("_eda_miss_strat","Mean")
+                if col:
+                    if strat == "Mean":     tmp[col] = tmp[col].fillna(tmp[col].mean())
+                    elif strat == "Median": tmp[col] = tmp[col].fillna(tmp[col].median())
+                    elif strat == "Mode":   tmp[col] = tmp[col].fillna(tmp[col].mode()[0] if len(tmp[col].mode())>0 else 0)
+                    else:                   tmp[col] = tmp[col].fillna(0)
+                    st.session_state["eda_df"] = tmp
+                    st.session_state["_eda_msg"] = f"✅ '{col}' missing values filled with {strat}!"
+
+            elif action == "drop_dupes":
+                before = len(tmp)
+                tmp = tmp.drop_duplicates().reset_index(drop=True)
+                st.session_state["eda_df"] = tmp
+                st.session_state["_eda_msg"] = f"✅ {before - len(tmp)} duplicate rows removed!"
+
+            elif action == "rename_col":
+                old = st.session_state.get("_eda_ren_old")
+                new = st.session_state.get("_eda_ren_new","").strip()
+                if old and new:
+                    st.session_state["eda_df"] = tmp.rename(columns={old: new})
+                    st.session_state["_eda_msg"] = f"✅ '{old}' renamed to '{new}'!"
+
+            elif action == "drop_col":
+                col = st.session_state.get("_eda_drop_col")
+                if col:
+                    st.session_state["eda_df"] = tmp.drop(columns=[col])
+                    st.session_state["_eda_msg"] = f"✅ '{col}' column removed!"
+
+            elif action == "change_dtype":
+                col  = st.session_state.get("_eda_dtype_col")
+                dtype= st.session_state.get("_eda_dtype_new","str")
+                if col:
+                    try:
+                        if dtype == "int":       tmp[col] = pd.to_numeric(tmp[col], errors="coerce").astype("Int64")
+                        elif dtype == "float":   tmp[col] = pd.to_numeric(tmp[col], errors="coerce")
+                        elif dtype == "str":     tmp[col] = tmp[col].astype(str)
+                        elif dtype == "datetime":tmp[col] = pd.to_datetime(tmp[col], errors="coerce")
+                        st.session_state["eda_df"] = tmp
+                        st.session_state["_eda_msg"] = f"✅ '{col}' type changed to {dtype}!"
+                    except Exception as ex:
+                        st.session_state["_eda_msg"] = f"❌ Error: {ex}"
+
+            elif action == "reset":
+                st.session_state["eda_df"] = st.session_state["_eda_original"].copy()
+                st.session_state["_eda_msg"] = "✅ Original data restored!"
+
+        # Save original on first load
+        if "_eda_original" not in st.session_state:
+            st.session_state["_eda_original"] = st.session_state["eda_df"].copy()
+
+        # Live reference
+        E = st.session_state["eda_df"]
 
         st.markdown(f"<div class='section-title'>🔍 Full EDA Report</div>", unsafe_allow_html=True)
 
+        # ── SHOW MESSAGE IF ANY ──
+        if st.session_state.get("_eda_msg"):
+            st.success(st.session_state.pop("_eda_msg"))
+
         # ── OVERVIEW CARDS ──
-        total_missing = eda_df.isnull().sum().sum()
-        dup_count     = eda_df.duplicated().sum()
-        e1,e2,e3,e4   = st.columns(4)
+        total_missing = int(E.isnull().sum().sum())
+        dup_count     = int(E.duplicated().sum())
+        e1,e2,e3,e4 = st.columns(4)
         for cw,(icon,val,lbl,clr) in zip([e1,e2,e3,e4],[
-            ("📋", f"{eda_df.shape[0]:,}",    "Total Rows",      ACCENT2),
-            ("🗂️", f"{eda_df.shape[1]}",      "Total Columns",   ACCENT1),
-            ("❓", f"{total_missing:,}",       "Missing Values",  "#f87171" if total_missing>0 else ACCENT3),
-            ("👯", f"{dup_count:,}",           "Duplicate Rows",  "#fbbf24" if dup_count>0 else ACCENT3),
+            ("📋", f"{E.shape[0]:,}",    "Total Rows",     ACCENT2),
+            ("🗂️", f"{E.shape[1]}",     "Total Columns",  ACCENT1),
+            ("❓", f"{total_missing:,}", "Missing Values", "#f87171" if total_missing>0 else ACCENT3),
+            ("👯", f"{dup_count:,}",     "Duplicate Rows", "#fbbf24" if dup_count>0 else ACCENT3),
         ]):
             with cw:
                 st.markdown(f"""
@@ -450,102 +517,79 @@ else:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # ── COLUMN INFO TABLE ──
-        st.markdown(f"<div class='section-title'>📋 Column Info — Data Types & Unique Values</div>", unsafe_allow_html=True)
+        # ── COLUMN INFO ──
+        st.markdown(f"<div class='section-title'>📋 Column Info</div>", unsafe_allow_html=True)
         col_info = []
-        for c in eda_df.columns:
-            miss     = eda_df[c].isnull().sum()
-            miss_pct = round(miss / len(eda_df) * 100, 1)
-            uniq     = eda_df[c].nunique()
-            dtype    = str(eda_df[c].dtype)
-            sample   = str(eda_df[c].dropna().iloc[0]) if len(eda_df[c].dropna()) > 0 else "N/A"
-            col_info.append({"Column": c, "Type": dtype, "Unique": uniq,
-                             "Missing": miss, "Missing %": f"{miss_pct}%", "Sample": sample})
+        for c in E.columns:
+            miss = E[c].isnull().sum()
+            col_info.append({"Column": c, "Type": str(E[c].dtype),
+                "Unique": E[c].nunique(), "Missing": miss,
+                "Missing %": f"{round(miss/len(E)*100,1)}%",
+                "Sample": str(E[c].dropna().iloc[0]) if E[c].dropna().shape[0]>0 else "N/A"})
         st.dataframe(pd.DataFrame(col_info), use_container_width=True, hide_index=True)
 
-        # ── MISSING VALUES HEATMAP ──
+        # ── MISSING HEATMAP ──
         if total_missing > 0:
             st.markdown(f"<div class='section-title'>❓ Missing Values Heatmap</div>", unsafe_allow_html=True)
-            miss_df = eda_df.isnull().astype(int)
-            fig_miss = px.imshow(miss_df.T, color_continuous_scale=["#1a1a2e", "#f87171"],
+            fig_miss = px.imshow(E.isnull().astype(int).T,
+                color_continuous_scale=["#1a1a2e","#f87171"],
                 title="Missing Values (Red = Missing)", aspect="auto")
             fig_miss.update_layout(**PLOT_TPL)
             st.plotly_chart(fig_miss, use_container_width=True)
         else:
-            st.success("✅ No missing values found!")
+            st.success("✅ No missing values!")
 
         # ── KEY STATS ──
-        if get_numeric_cols(eda_df):
-            st.markdown(f"<div class='section-title'>📊 Key Stats — Mean, Median, Mode, Std</div>", unsafe_allow_html=True)
-            nc = get_numeric_cols(eda_df)
-            stats_rows = []
-            for c in nc:
-                stats_rows.append({
-                    "Column": c,
-                    "Mean":   round(eda_df[c].mean(), 2),
-                    "Median": round(eda_df[c].median(), 2),
-                    "Mode":   round(eda_df[c].mode()[0], 2) if len(eda_df[c].mode()) > 0 else "N/A",
-                    "Std":    round(eda_df[c].std(), 2),
-                    "Min":    round(eda_df[c].min(), 2),
-                    "Max":    round(eda_df[c].max(), 2),
-                })
-            st.dataframe(pd.DataFrame(stats_rows), use_container_width=True, hide_index=True)
+        nc_eda = get_numeric_cols(E)
+        if nc_eda:
+            st.markdown(f"<div class='section-title'>📊 Key Stats</div>", unsafe_allow_html=True)
+            st.dataframe(pd.DataFrame([{
+                "Column": c, "Mean": round(E[c].mean(),2),
+                "Median": round(E[c].median(),2),
+                "Mode": round(E[c].mode()[0],2) if len(E[c].mode())>0 else "N/A",
+                "Std": round(E[c].std(),2), "Min": round(E[c].min(),2), "Max": round(E[c].max(),2)
+            } for c in nc_eda]), use_container_width=True, hide_index=True)
 
         # ── OUTLIERS ──
-        if get_numeric_cols(eda_df):
+        if nc_eda:
             st.markdown(f"<div class='section-title'>📦 Outlier Detection</div>", unsafe_allow_html=True)
-            nc = get_numeric_cols(eda_df)
-            sel_out = st.selectbox("Select column:", nc, key="eda_out_col")
-            fig_out = px.box(eda_df, y=sel_out, title=f"{sel_out} — Outliers (Boxplot)",
+            sel_out = st.selectbox("Select column:", nc_eda, key="eda_out_col")
+            fig_out = px.box(E, y=sel_out, title=f"{sel_out} Outliers",
                 color_discrete_sequence=[ACCENT1], points="all")
             fig_out.update_layout(**PLOT_TPL)
             st.plotly_chart(fig_out, use_container_width=True)
-            q1   = eda_df[sel_out].quantile(0.25)
-            q3   = eda_df[sel_out].quantile(0.75)
-            iqr  = q3 - q1
-            outs = eda_df[(eda_df[sel_out] < q1 - 1.5*iqr) | (eda_df[sel_out] > q3 + 1.5*iqr)]
-            st.markdown(f"""
-            <div class='ai-response' style='margin-top:4px;'>
-                <b style='color:{ACCENT1};'>{sel_out}</b> has
-                <b style='color:#f87171;'>{len(outs)} outliers</b>
-                (IQR method: &lt; {q1-1.5*iqr:,.1f} or &gt; {q3+1.5*iqr:,.1f})
-            </div>""", unsafe_allow_html=True)
+            q1,q3 = E[sel_out].quantile(0.25), E[sel_out].quantile(0.75)
+            iqr   = q3-q1
+            outs  = E[(E[sel_out]<q1-1.5*iqr)|(E[sel_out]>q3+1.5*iqr)]
+            st.markdown(f"<div class='ai-response'><b style='color:{ACCENT1};'>{sel_out}</b> — <b style='color:#f87171;'>{len(outs)} outliers</b> (IQR: &lt;{q1-1.5*iqr:,.1f} or &gt;{q3+1.5*iqr:,.1f})</div>", unsafe_allow_html=True)
 
         # ══════════════════════════════
         # EDITING SECTION
         # ══════════════════════════════
         st.markdown(f"<div class='section-title'>✏️ Edit Your Data</div>", unsafe_allow_html=True)
-        st.markdown(f"<div style='color:{TEXT2};font-size:0.85rem;margin-bottom:14px;'>Changes will appear in preview below — then Download or Apply to dashboard.</div>", unsafe_allow_html=True)
-
         ed1, ed2 = st.columns(2)
 
-        # ── FIX MISSING VALUES ──
+        # ── FIX MISSING ──
         with ed1:
-            st.markdown(f"<div style='font-weight:700;color:{ACCENT1};margin-bottom:8px;'>❓ Missing Values Fix</div>", unsafe_allow_html=True)
-            nc2 = get_numeric_cols(eda_df)
-            if nc2:
-                miss_col  = st.selectbox("Column:", nc2, key="eda_miss_col")
-                miss_strat= st.selectbox("Strategy:", ["Mean","Median","Mode","Zero"], key="eda_miss_strat")
-                if st.button("✅ Fill Missing", key="eda_fill", use_container_width=True):
-                    tmp = st.session_state["eda_df"].copy()
-                    if miss_strat == "Mean":   tmp[miss_col].fillna(tmp[miss_col].mean(), inplace=True)
-                    elif miss_strat == "Median": tmp[miss_col].fillna(tmp[miss_col].median(), inplace=True)
-                    elif miss_strat == "Mode":   tmp[miss_col].fillna(tmp[miss_col].mode()[0], inplace=True)
-                    else:                        tmp[miss_col].fillna(0, inplace=True)
-                    st.session_state["eda_df"] = tmp
-                    st.success(f"✅ {miss_col} — missing values filled using {miss_strat}!")
+            st.markdown(f"<div style='font-weight:700;color:{ACCENT1};margin-bottom:8px;'>❓ Fill Missing Values</div>", unsafe_allow_html=True)
+            nc_eda2 = get_numeric_cols(E)
+            if nc_eda2:
+                miss_col   = st.selectbox("Column:", nc_eda2, key="eda_miss_col")
+                miss_strat = st.selectbox("Strategy:", ["Mean","Median","Mode","Zero"], key="eda_miss_strat")
+                if st.button("Fill Missing", key="eda_fill", use_container_width=True):
+                    st.session_state["_eda_action"]     = "fill_missing"
+                    st.session_state["_eda_miss_col"]   = miss_col
+                    st.session_state["_eda_miss_strat"] = miss_strat
                     st.rerun()
+            else:
+                st.info("No numeric columns found.")
 
         # ── DROP DUPLICATES ──
         with ed2:
             st.markdown(f"<div style='font-weight:700;color:{ACCENT1};margin-bottom:8px;'>👯 Duplicate Rows</div>", unsafe_allow_html=True)
-            dup_now = st.session_state["eda_df"].duplicated().sum()
-            st.markdown(f"<div style='color:{TEXT2};font-size:0.85rem;margin-bottom:8px;'>{dup_now} duplicate rows found</div>", unsafe_allow_html=True)
-            if st.button("🗑️ Delete Duplicates", key="eda_dup", use_container_width=True):
-                tmp = st.session_state["eda_df"].drop_duplicates().reset_index(drop=True)
-                removed = len(st.session_state["eda_df"]) - len(tmp)
-                st.session_state["eda_df"] = tmp
-                st.success(f"✅ {removed} duplicate rows hata diye!")
+            st.markdown(f"<div style='color:{TEXT2};font-size:0.85rem;margin-bottom:8px;'>{dup_count} duplicate rows found</div>", unsafe_allow_html=True)
+            if st.button("Delete Duplicates", key="eda_dup", use_container_width=True):
+                st.session_state["_eda_action"] = "drop_dupes"
                 st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -554,76 +598,61 @@ else:
         # ── RENAME COLUMN ──
         with ed3:
             st.markdown(f"<div style='font-weight:700;color:{ACCENT1};margin-bottom:8px;'>✏️ Rename Column</div>", unsafe_allow_html=True)
-            ren_old = st.selectbox("Column:", list(eda_df.columns), key="eda_ren_old")
-            ren_new = st.text_input("New name:", key="eda_ren_new", placeholder="Naya naam likho...")
-            if st.button("✅ Rename", key="eda_rename", use_container_width=True):
-                if ren_new.strip():
-                    tmp = st.session_state["eda_df"].rename(columns={ren_old: ren_new.strip()})
-                    st.session_state["eda_df"] = tmp
-                    st.success(f"✅ '{ren_old}' → '{ren_new.strip()}'")
-                    st.rerun()
+            ren_old = st.selectbox("Column:", list(E.columns), key="eda_ren_old")
+            ren_new = st.text_input("New name:", key="eda_ren_new", placeholder="Enter new name...")
+            if st.button("Rename", key="eda_rename", use_container_width=True):
+                st.session_state["_eda_action"]  = "rename_col"
+                st.session_state["_eda_ren_old"] = ren_old
+                st.session_state["_eda_ren_new"] = ren_new
+                st.rerun()
 
         # ── DROP COLUMN ──
         with ed4:
             st.markdown(f"<div style='font-weight:700;color:{ACCENT1};margin-bottom:8px;'>🗑️ Drop Column</div>", unsafe_allow_html=True)
-            drop_col = st.selectbox("Column:", list(eda_df.columns), key="eda_drop_col")
-            if st.button("🗑️ Drop Column", key="eda_drop", use_container_width=True):
-                tmp = st.session_state["eda_df"].drop(columns=[drop_col])
-                st.session_state["eda_df"] = tmp
-                st.success(f"✅ '{drop_col}' column hata diya!")
+            drop_col = st.selectbox("Column:", list(E.columns), key="eda_drop_col")
+            if st.button("Drop Column", key="eda_drop", use_container_width=True):
+                st.session_state["_eda_action"]   = "drop_col"
+                st.session_state["_eda_drop_col"] = drop_col
                 st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # ── DATA TYPE CHANGE ──
+        # ── CHANGE DTYPE ──
         st.markdown(f"<div style='font-weight:700;color:{ACCENT1};margin-bottom:8px;'>🔄 Change Data Type</div>", unsafe_allow_html=True)
         dt1, dt2, dt3 = st.columns(3)
-        with dt1: dtype_col = st.selectbox("Column:", list(eda_df.columns), key="eda_dtype_col")
+        with dt1: dtype_col = st.selectbox("Column:", list(E.columns), key="eda_dtype_col")
         with dt2: dtype_new = st.selectbox("New Type:", ["int","float","str","datetime"], key="eda_dtype_new")
         with dt3:
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("✅ Change Type", key="eda_dtype_btn", use_container_width=True):
-                try:
-                    tmp = st.session_state["eda_df"].copy()
-                    if dtype_new == "int":       tmp[dtype_col] = pd.to_numeric(tmp[dtype_col], errors="coerce").astype("Int64")
-                    elif dtype_new == "float":   tmp[dtype_col] = pd.to_numeric(tmp[dtype_col], errors="coerce")
-                    elif dtype_new == "str":     tmp[dtype_col] = tmp[dtype_col].astype(str)
-                    elif dtype_new == "datetime":tmp[dtype_col] = pd.to_datetime(tmp[dtype_col], errors="coerce")
-                    st.session_state["eda_df"] = tmp
-                    st.success(f"✅ '{dtype_col}' → {dtype_new}")
-                    st.rerun()
-                except Exception as ex:
-                    st.error(f"Error: {ex}")
+            if st.button("Change Type", key="eda_dtype_btn", use_container_width=True):
+                st.session_state["_eda_action"]    = "change_dtype"
+                st.session_state["_eda_dtype_col"] = dtype_col
+                st.session_state["_eda_dtype_new"] = dtype_new
+                st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # ── PREVIEW EDITED DATA ──
+        # ── PREVIEW ──
         st.markdown(f"<div class='section-title'>👁️ Edited Data Preview</div>", unsafe_allow_html=True)
         st.dataframe(st.session_state["eda_df"], use_container_width=True, height=300)
 
-        # ── DOWNLOAD + APPLY ──
-        dl1, dl2, dl3 = st.columns(3)
+        # ── DOWNLOAD + RESET ──
+        dl1, dl2 = st.columns(2)
         with dl1:
             csv_eda = io.StringIO()
             st.session_state["eda_df"].to_csv(csv_eda, index=False)
-            st.download_button("⬇️ Download Edited CSV", csv_eda.getvalue().encode(),
+            st.download_button("Download Edited CSV", csv_eda.getvalue().encode(),
                 file_name=f"edited_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv", use_container_width=True)
         with dl2:
-            if st.button("🚀 Apply to Dashboard", key="eda_apply", use_container_width=True):
-                st.session_state["df"] = st.session_state["eda_df"].copy()
-                st.success("✅ Edited data applied to the entire dashboard!")
-                st.rerun()
-        with dl3:
-            if st.button("🔄 Reset to Original", key="eda_reset", use_container_width=True):
-                st.session_state["eda_df"] = df.copy()
-                st.success("✅ Original data restored!")
+            if st.button("Reset to Original", key="eda_reset", use_container_width=True):
+                st.session_state["_eda_action"] = "reset"
                 st.rerun()
 
     # ---- TAB 2: RAW DATA ----
     with tab2:
         st.markdown(f"<div class='section-title'>🗃️ Dataset</div>", unsafe_allow_html=True)
-        search = st.text_input("🔍 Filter rows:", placeholder="Type to filter...", key="search")
+        search = st.text_input("Filter rows:", placeholder="Type to filter...", key="search")
         if search:
             mask = df.astype(str).apply(lambda row: row.str.contains(search, case=False)).any(axis=1)
             st.dataframe(df[mask], use_container_width=True, height=400)
@@ -633,7 +662,7 @@ else:
         st.dataframe(df[numeric_cols].describe().round(2), use_container_width=True)
         csv_buf = io.StringIO()
         df.to_csv(csv_buf, index=False)
-        st.download_button("⬇️ Download Cleaned Data", csv_buf.getvalue().encode(),
+        st.download_button("Download Cleaned Data", csv_buf.getvalue().encode(),
             file_name=f"spendsense_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv")
 
     # ---- TAB 3: DEEP DIVE ----
@@ -693,11 +722,11 @@ else:
             if "Month" in df.columns and numeric_cols:
                 extra_context = df.groupby("Month")[numeric_cols].sum().to_string()
 
-        if st.button("🚀 Generate AI Insight", use_container_width=True):
+        if st.button("Generate AI Insight", use_container_width=True):
             if not api_key:
                 st.error("⚠️ Please enter your Groq API key in the sidebar first.")
             else:
-                with st.spinner("🤔 Groq AI is analyzing your financial data..."):
+                with st.spinner("Analyzing your financial data..."):
                     try:
                         prompt   = build_ai_prompt(analysis_key, summary, extra_context)
                         response = ask_groq(prompt, api_key)
@@ -713,7 +742,7 @@ else:
                 {st.session_state[f'ai_result_{analysis_key}'].replace(chr(10), '<br>')}
             </div>
             """, unsafe_allow_html=True)
-            st.download_button("⬇️ Download Insight",
+            st.download_button("Download Insight",
                 st.session_state[f"ai_result_{analysis_key}"],
                 file_name=f"insight_{analysis_key}_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
                 mime="text/plain")
@@ -722,9 +751,9 @@ else:
         st.markdown(f"<div class='section-title'>⚡ Quick Insights</div>", unsafe_allow_html=True)
         qc1, qc2, qc3 = st.columns(3)
         quick_map = {
-            "💸 Spending Alert": "warnings",
-            "🎯 Savings Tips":   "savings",
-            "🚀 Income Ideas":   "income",
+            "Spending Alert": "warnings",
+            "Savings Tips":   "savings",
+            "Income Ideas":   "income",
         }
         for col_w, (label, key) in zip([qc1,qc2,qc3], quick_map.items()):
             with col_w:
@@ -763,7 +792,7 @@ else:
                 savings_col  = st.selectbox("Savings Column:", numeric_cols, key="goal_col")
                 saved_so_far = st.number_input(f"Already Saved ({CURR_SYMBOL})", min_value=0, value=0, step=500)
 
-        if st.button("📊 Calculate Progress", use_container_width=True):
+        if st.button("Calculate Progress", use_container_width=True):
             total_saved = df[savings_col].sum() + saved_so_far if numeric_cols else saved_so_far
             remaining   = max(goal_amount - total_saved, 0)
             pct         = min((total_saved / goal_amount) * 100, 100)
@@ -884,7 +913,7 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
                 if api_key:
-                    if st.button("🤖 AI Forecast Analysis", use_container_width=True):
+                    if st.button("AI Forecast Analysis", use_container_width=True):
                         with st.spinner("Generating insights..."):
                             try:
                                 fc_prompt = (f"Monthly {forecast_col} data: {dict(zip(monthly_data['Month_Name'], monthly_data[forecast_col].round(0)))}. "
@@ -908,7 +937,7 @@ else:
 
         # PDF EXPORT
         st.markdown(f"<div class='section-title'>🖨️ Export PDF Report</div>", unsafe_allow_html=True)
-        if st.button("📄 Generate PDF Report", use_container_width=True):
+        if st.button("Generate PDF Report", use_container_width=True):
             if not PDF_AVAILABLE:
                 st.error("Please run: pip install fpdf2 to enable PDF export.")
             else:
@@ -979,7 +1008,7 @@ else:
                     pdf_buf.write(pdf.output())
                     pdf_buf.seek(0)
                     st.success("✅ PDF ready!")
-                    st.download_button("⬇️ Download PDF Report", pdf_buf,
+                    st.download_button("Download PDF Report", pdf_buf,
                         file_name=f"spendsense_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
                         mime="application/pdf", use_container_width=True)
                 except Exception as e:
@@ -1040,7 +1069,7 @@ else:
 
         col_send, col_clear = st.columns([5,1])
         with col_send:
-            send_btn = st.button("📤 Send", use_container_width=True)
+            send_btn = st.button("Send", use_container_width=True)
         with col_clear:
             if st.button("🗑️", use_container_width=True, help="Clear chat"):
                 st.session_state["chat_history"] = []

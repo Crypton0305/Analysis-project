@@ -7,13 +7,8 @@ from groq import Groq
 # DATA LOGIC
 # ==============================
 
-def clean_dataframe(df):
-    df = df.drop_duplicates()
-    for col in df.select_dtypes(include=np.number).columns:
-        df[col] = df[col].fillna(df[col].median())
-    for col in df.select_dtypes(include=["object"]).columns:
-        if df[col].mode().shape[0] > 0:
-            df[col] = df[col].fillna(df[col].mode()[0])
+def parse_dates(df):
+    """Sirf date columns parse karo — missing values mat chherao"""
     for col in df.columns:
         if "date" in col.lower():
             df[col] = pd.to_datetime(df[col], errors="coerce")
@@ -21,6 +16,17 @@ def clean_dataframe(df):
             df["Month"]      = df[col].dt.month
             df["Month_Name"] = df[col].dt.strftime("%b")
             df["Day"]        = df[col].dt.day
+    return df
+
+def clean_dataframe(df):
+    """Full clean — duplicates hataao + missing fill + dates parse"""
+    df = df.drop_duplicates()
+    for col in df.select_dtypes(include=np.number).columns:
+        df[col] = df[col].fillna(df[col].median())
+    for col in df.select_dtypes(include=["object"]).columns:
+        if df[col].mode().shape[0] > 0:
+            df[col] = df[col].fillna(df[col].mode()[0])
+    df = parse_dates(df)
     return df
 
 def get_numeric_cols(df):
